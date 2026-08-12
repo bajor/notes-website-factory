@@ -8,13 +8,9 @@ Do not just scaffold it. Implement it end-to-end, add tests, documentation, GitH
 
 I maintain my notes in Apple Freeform.
 
-I export the Freeform board to exactly one PDF file:
+I export the Freeform board to exactly one PDF file in the repository root. The PDF filename is arbitrary; do not require a specific filename such as `notes.pdf`.
 
-```text
-notes.pdf
-```
-
-The PDF is required to contain exactly one page.
+The repository must contain exactly one `.pdf` file total, and that PDF is required to contain exactly one page.
 
 That single PDF page represents the entire Freeform board.
 
@@ -31,16 +27,16 @@ The PDF may contain:
 - links
 - YouTube links associated with visual regions/cards
 
-I want `notes.pdf` to be the single source of truth.
+I want the repository's single PDF file to be the single source of truth.
 
 My workflow must be:
 
 ```text
 edit Apple Freeform board
         ↓
-export as notes.pdf
+export as a single-page PDF with any filename
         ↓
-replace notes.pdf in Git repository
+keep exactly one PDF in the Git repository
         ↓
 open PR
         ↓
@@ -53,32 +49,47 @@ GitHub Pages automatically publishes updated notes
 
 The final website must visually reproduce the PDF extremely faithfully while providing a much better reading experience than a normal PDF viewer.
 
----
-
-# Hard invariant: exactly one PDF page
-
-The repository must enforce:
+The site must be hosted as a normal GitHub Pages project site for this repository under the `bajor.github.io` domain, i.e. at:
 
 ```text
-./notes.pdf exists
-AND
-notes.pdf contains exactly 1 page
+https://bajor.github.io/algos-for-slow-learners/
 ```
+
+Do not require a custom domain.
+
+---
+
+# Hard invariant: exactly one PDF file and exactly one PDF page
+
+The repository must enforce both of these conditions:
+
+```text
+exactly one *.pdf file exists in the repository
+AND
+that PDF contains exactly 1 page
+```
+
+The PDF filename is arbitrary and must be discovered automatically.
 
 The build must fail if:
 
-- `notes.pdf` is missing
-- `notes.pdf` is invalid
-- `notes.pdf` contains 0 pages
-- `notes.pdf` contains more than 1 page
+- no PDF exists
+- more than one PDF exists anywhere in the repository
+- the single PDF is invalid
+- the single PDF contains 0 pages
+- the single PDF contains more than 1 page
 
-Example failure:
+Example failures:
 
 ```text
-ERROR: notes.pdf must contain exactly one page, found 3 pages
+ERROR: expected exactly one PDF file, found 0
+ERROR: expected exactly one PDF file, found 2
+ERROR: <filename>.pdf must contain exactly one page, found 3 pages
 ```
 
 Do not support multi-page PDFs.
+
+Do not silently select one PDF when multiple PDFs exist.
 
 Do not silently concatenate pages.
 
@@ -92,7 +103,7 @@ The single page is one large spatial board.
 
 Priorities, in this exact order:
 
-1. visual fidelity to `notes.pdf`
+1. visual fidelity to the single source PDF
 2. correctness of geometry and hyperlink placement
 3. extremely smooth zooming and panning
 4. fast loading
@@ -116,7 +127,7 @@ The rendered PDF is the canonical visual representation.
 Use this architecture unless actual implementation evidence demonstrates a clearly better solution:
 
 ```text
-notes.pdf
+single discovered PDF
    ↓
 battle-tested PDF parser / renderer
    ↓
@@ -132,7 +143,7 @@ manifest.json
    ↓
 small static TypeScript viewer
    ↓
-GitHub Pages
+GitHub Pages at https://bajor.github.io/algos-for-slow-learners/
 ```
 
 The generator must follow a functional-core / imperative-shell design.
@@ -232,6 +243,10 @@ The generator must be structured around pure transformations.
 Conceptually:
 
 ```text
+repository file list
+    ↓
+discoverSinglePdf
+    ↓
 PDF metadata
     ↓
 validateDocument
@@ -252,6 +267,7 @@ SiteManifest
 Functions such as:
 
 ```text
+discover_single_pdf
 validate_page_count
 normalize_rect
 pdf_to_board_coordinates
@@ -286,7 +302,8 @@ Avoid:
 All I/O must live near explicit boundaries:
 
 ```text
-read notes.pdf
+list repository files
+read the discovered PDF
 invoke PDF engine
 read PDF engine output
 write tiles
@@ -343,7 +360,7 @@ Do not pass anonymous unstructured maps through the generator.
 
 # Single-page geometry
 
-The PDF contains exactly one board page.
+The discovered PDF contains exactly one board page.
 
 Extract:
 
@@ -786,13 +803,14 @@ make inspect
 or:
 
 ```bash
-notes-site inspect notes.pdf
+notes-site inspect <discovered-pdf>
 ```
 
-It must inspect the actual PDF and print something like:
+It must automatically discover the repository's single PDF and print something like:
 
 ```text
-File: notes.pdf
+File: my-board.pdf
+PDF files found: 1
 Pages: 1
 
 Page:
@@ -810,6 +828,14 @@ Links:
   [url] rect=(...) url=https://...
 ```
 
+If PDF file count != 1:
+
+```text
+ERROR: expected exactly one PDF file, found N
+```
+
+and exit non-zero.
+
 If pages != 1:
 
 ```text
@@ -825,7 +851,7 @@ and exit non-zero.
 For identical:
 
 ```text
-notes.pdf
+source PDF bytes
 generator version
 PDF renderer version
 configuration
@@ -854,7 +880,7 @@ Use a structure similar to:
 
 ```text
 /
-├── notes.pdf
+├── <exactly-one-arbitrarily-named>.pdf
 ├── README.md
 ├── Makefile
 ├── .gitignore
@@ -934,9 +960,11 @@ Create a small test PDF fixture containing:
 - normal HTTPS link annotation
 - YouTube link annotation
 
-Prefer generating the fixture programmatically during tests or keeping a tiny deterministic fixture in the repository.
+Prefer generating the fixture programmatically during tests or keeping a tiny deterministic fixture in the repository test fixtures.
 
 Test the complete extraction pipeline against it.
+
+Test fixtures must not violate the production invariant check for exactly one source PDF; keep fixtures in a path excluded from source-PDF discovery or generate them during tests.
 
 ---
 
@@ -952,6 +980,14 @@ Test expected behavior:
 exit status != 0
 stderr contains:
 "expected exactly one page"
+```
+
+Also test source-PDF discovery:
+
+```text
+0 source PDFs -> fail
+1 source PDF -> success
+2+ source PDFs -> fail
 ```
 
 ---
@@ -978,6 +1014,15 @@ Pinning the renderer version is preferable.
 # Generator tests
 
 At minimum cover:
+
+## Source PDF discovery
+
+```text
+0 PDFs -> fail
+1 PDF -> success
+2+ PDFs -> fail
+arbitrary valid filename -> success
+```
 
 ## Document validation
 
@@ -1028,7 +1073,7 @@ Provide:
 make inspect
 ```
 
-Inspect `notes.pdf`.
+Discover and inspect the repository's single PDF.
 
 ```bash
 make test
@@ -1040,7 +1085,7 @@ Run all Rust and viewer tests.
 make build
 ```
 
-Produce the complete static site under:
+Discover the repository's single PDF and produce the complete static site under:
 
 ```text
 dist/
@@ -1075,7 +1120,7 @@ dist/
 
 Exact layout can differ if technically justified.
 
-The browser must never need access to `notes.pdf`.
+The browser must never need access to the source PDF.
 
 ---
 
@@ -1084,22 +1129,31 @@ The browser must never need access to `notes.pdf`.
 On pull requests affecting relevant files:
 
 1. install exact required PDF engine
-2. validate `notes.pdf`
-3. verify exactly one page
-4. compile generator
-5. run Rust tests
-6. run viewer tests
-7. run full build
-8. validate generated output
-9. fail if anything is inconsistent
+2. discover all PDF files and verify exactly one source PDF exists
+3. validate that PDF
+4. verify exactly one page
+5. compile generator
+6. run Rust tests
+7. run viewer tests
+8. run full build
+9. validate generated output
+10. fail if anything is inconsistent
 
 Most importantly:
 
-If I accidentally export a multi-page PDF, CI must reject the PR.
+If I accidentally commit zero PDFs, more than one PDF, or a multi-page PDF, CI must reject the PR.
 
 ---
 
 # GitHub Pages deployment
+
+This repository is `bajor/algos-for-slow-learners`.
+
+Host the generated site as the normal GitHub Pages project site at:
+
+```text
+https://bajor.github.io/algos-for-slow-learners/
+```
 
 On push/merge to:
 
@@ -1130,29 +1184,25 @@ Configure the GitHub Pages deployment environment properly.
 
 Do not maintain a manually committed `gh-pages` branch.
 
+Do not require or configure a custom domain.
+
 ---
 
 # GitHub Pages path handling
 
-The static viewer must work at both:
+The primary deployment target is specifically:
 
 ```text
-https://USER.github.io/
+https://bajor.github.io/algos-for-slow-learners/
 ```
 
-and:
+Configure the viewer/bundler base path correctly for the `/algos-for-slow-learners/` project subpath.
 
-```text
-https://USER.github.io/REPOSITORY/
-```
-
-No hardcoded root-relative paths such as:
+No incorrect hardcoded root-relative paths such as:
 
 ```text
 /assets/foo.js
 ```
-
-unless the configured base path makes them correct.
 
 Test repository subpath deployment.
 
@@ -1239,7 +1289,7 @@ Do not immediately load maximum-resolution tiles.
 
 Optionally persist the last viewport in `localStorage`.
 
-If the manifest/build identity changes because `notes.pdf` changed, old viewport state may be reset if appropriate.
+If the manifest/build identity changes because the source PDF changed, old viewport state may be reset if appropriate.
 
 ---
 
@@ -1248,7 +1298,8 @@ If the manifest/build identity changes because `notes.pdf` changed, old viewport
 Print a concise summary after build:
 
 ```text
-Input PDF:              14.2 MiB
+Input PDF:              my-board.pdf (14.2 MiB)
+PDF files found:        1
 Pages:                  1
 Board size:             13240 × 8820 pt
 URI annotations:        23
@@ -1277,16 +1328,17 @@ Explain concretely:
 2. why custom PDF parsing is forbidden
 3. why the generator uses Rust
 4. functional-core / imperative-shell structure
-5. domain model
-6. coordinate conversion
-7. tile-pyramid strategy
-8. OpenSeadragon choice
-9. YouTube overlay behavior
-10. lazy iframe strategy
-11. deterministic build guarantees
-12. GitHub Pages deployment
-13. PDF engine licensing
-14. Apple Freeform PDF limitations
+5. source PDF discovery and exactly-one-PDF invariant
+6. domain model
+7. coordinate conversion
+8. tile-pyramid strategy
+9. OpenSeadragon choice
+10. YouTube overlay behavior
+11. lazy iframe strategy
+12. deterministic build guarantees
+13. GitHub Pages deployment at `https://bajor.github.io/algos-for-slow-learners/`
+14. PDF engine licensing
+15. Apple Freeform PDF limitations
 
 Do not fill it with generic software-engineering prose.
 
@@ -1297,13 +1349,13 @@ Do not fill it with generic software-engineering prose.
 The beginning of README should make the normal workflow obvious:
 
 ```text
-1. Export Apple Freeform board as PDF.
-2. Ensure the export consists of exactly one PDF page.
-3. Replace ./notes.pdf.
+1. Export Apple Freeform board as a PDF with any filename.
+2. Ensure the repository contains exactly one PDF total.
+3. Ensure that PDF contains exactly one page.
 4. Commit and open a PR.
 5. CI validates and builds it.
 6. Merge to main.
-7. GitHub Pages updates automatically.
+7. GitHub Pages updates https://bajor.github.io/algos-for-slow-learners/ automatically.
 ```
 
 Then show:
@@ -1324,7 +1376,8 @@ Use explicit typed errors.
 Examples:
 
 ```text
-MissingNotesPdf
+MissingPdf
+MultiplePdfs { found: usize }
 InvalidPdf
 UnexpectedPageCount { found: usize }
 InvalidPageGeometry
@@ -1345,13 +1398,15 @@ Do not panic for normal validation failures.
 
 Do NOT:
 
+- assume the source PDF is named `notes.pdf`
+- allow zero or multiple source PDFs
 - implement a PDF parser
 - implement a PDF renderer
 - use an immature PDF parser for ideological language purity
 - support multiple pages
 - concatenate pages
 - use browser PDF rendering
-- embed `notes.pdf` directly
+- embed the source PDF directly
 - rebuild Freeform objects as HTML
 - use OCR
 - use computer vision
@@ -1373,7 +1428,9 @@ Work iteratively but complete the implementation.
 Start with:
 
 ```text
-notes.pdf
+repository file list
+    ↓
+exactly-one-PDF discovery
     ↓
 page-count validation
     ↓
@@ -1433,7 +1490,10 @@ all work.
 
 Additionally:
 
-- `notes.pdf` with exactly one page succeeds
+- exactly one PDF exists in the repository
+- the PDF may have any filename
+- the single PDF has exactly one page
+- zero or multiple PDFs fail immediately
 - a multi-page PDF fails immediately
 - output visually matches the PDF
 - pan/zoom is smooth
@@ -1446,13 +1506,13 @@ Additionally:
 - no backend exists
 - browser does not parse PDF
 - build is deterministic
-- PR CI rejects invalid PDFs
-- merge to `main` deploys automatically to GitHub Pages
+- PR CI rejects invalid PDF/file-count conditions
+- merge to `main` deploys automatically to `https://bajor.github.io/algos-for-slow-learners/`
 
 My routine maintenance must consist only of:
 
 ```text
-replace notes.pdf
+replace the repository's single PDF (filename may change)
 commit
 merge
 ```
