@@ -1,0 +1,29 @@
+[package]
+name = "notes-site"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
+regex = "1.10"
+roxmltree = "0.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "1.0"
+url = "2.5"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+proptest = "1.5"
+tempfile = "3.10"
+
+[lib]
+name = "notes_site"
+path = "src/lib.rs"
+
+[[bin]]
+name = "notes-site"
+path = "src/main.rs"
