@@ -6,13 +6,13 @@
     <title>Freeform Notes</title>
   </head>
   <body>
-    <div id="viewer"></div>
+    <main id="viewer" aria-label="Zoomable Freeform notes"></main>
+    <div id="status" role="status">Loading notes...</div>
     <div id="toolbar" aria-label="Viewer controls">
-      <button id="zoom-in" type="button">+</button>
-      <button id="zoom-out" type="button">-</button>
-      <button id="fit" type="button">Fit</button>
-      <button id="reset" type="button">Reset</button>
-      <button id="fullscreen" type="button">Full</button>
+      <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+      <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">-</button>
+      <button id="fit" type="button" title="Fit board">Fit</button>
+      <button id="fullscreen" type="button" title="Enter fullscreen">Full</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

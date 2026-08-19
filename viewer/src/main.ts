@@ -1,73 +1,111 @@
 import OpenSeadragon from 'openseadragon';
-import { isClick } from './interaction';
+import { containsPoint, scaleRect, type Rect } from './geometry';
 import './style.css';
+
+type BoardRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type InteractiveOverlay = Readonly<{
+  element: HTMLElement;
+  imageRect: Rect;
+  link: BoardLink;
+}>;
+
+type BoardLink = BoardRect & (
+  | { kind: 'youtube'; videoId: string }
+  | { kind: 'externalUrl'; url: string }
+);
 
 type Manifest = {
   version: number;
   buildId: string;
   board: { width: number; height: number };
-  links: Array<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    kind: 'youtube' | 'externalUrl';
-    videoId?: string;
-    video_id?: string;
-    url?: string;
-  }>;
+  links: BoardLink[];
 };
 
 async function main(): Promise<void> {
-  const manifest = await fetch('manifest.json').then((response) => response.json()) as Manifest;
+  const manifest = await loadManifest();
   const viewer = OpenSeadragon({
     id: 'viewer',
     tileSources: 'board.dzi',
     showNavigationControl: false,
+    animationTime: 0.65,
+    blendTime: 0.1,
+    constrainDuringPan: true,
+    visibilityRatio: 0.35,
+    maxZoomPixelRatio: 2,
     gestureSettingsTouch: { pinchToZoom: true, dragToPan: true, clickToZoom: false, dblClickToZoom: true },
     gestureSettingsMouse: { clickToZoom: false, dblClickToZoom: true },
   });
 
   viewer.addHandler('open', () => {
-    viewer.viewport.goHome(true);
-    addOverlays(viewer, manifest);
+    document.getElementById('status')?.remove();
+    viewer.viewport.goHome(false);
+    const overlays = addOverlays(viewer, manifest);
+    addCanvasActivation(viewer, overlays);
   });
 
-  document.getElementById('zoom-in')?.addEventListener('click', () => viewer.viewport.zoomBy(1.4));
-  document.getElementById('zoom-out')?.addEventListener('click', () => viewer.viewport.zoomBy(0.7));
+  document.getElementById('zoom-in')?.addEventListener('click', () => zoom(viewer, 1.4));
+  document.getElementById('zoom-out')?.addEventListener('click', () => zoom(viewer, 1 / 1.4));
   document.getElementById('fit')?.addEventListener('click', () => viewer.viewport.goHome());
-  document.getElementById('reset')?.addEventListener('click', () => viewer.viewport.goHome());
-  document.getElementById('fullscreen')?.addEventListener('click', () => document.documentElement.requestFullscreen?.());
+  document.getElementById('fullscreen')?.addEventListener('click', enterFullscreen);
   document.addEventListener('keydown', (event) => {
-    if (event.key === '+') viewer.viewport.zoomBy(1.4);
-    if (event.key === '-') viewer.viewport.zoomBy(0.7);
+    if (event.key === '+') zoom(viewer, 1.4);
+    if (event.key === '-') zoom(viewer, 1 / 1.4);
     if (event.key === '0') viewer.viewport.goHome();
-    if (event.key === 'f') document.documentElement.requestFullscreen?.();
+    if (event.key.toLowerCase() === 'f') enterFullscreen();
   });
 }
 
-function addOverlays(viewer: OpenSeadragon.Viewer, manifest: Manifest): void {
-  for (const link of manifest.links) {
-    const element = document.createElement('button');
+function addOverlays(viewer: OpenSeadragon.Viewer, manifest: Manifest): InteractiveOverlay[] {
+  const image = viewer.world.getItemAt(0);
+  const contentSize = image.getContentSize();
+  const renderedBoard = { width: contentSize.x, height: contentSize.y };
+  return manifest.links.map((link) => {
+    const element = document.createElement('div');
     element.className = 'link-overlay';
-    element.type = 'button';
-    element.setAttribute('aria-label', link.kind.toLowerCase().includes('youtube') ? 'Play YouTube video' : 'Open link');
-    let pointerStart: { x: number; y: number } | null = null;
-    element.addEventListener('pointerdown', (event) => { pointerStart = { x: event.clientX, y: event.clientY }; });
-    element.addEventListener('pointerup', (event) => {
-      if (!pointerStart || !isClick(pointerStart, { x: event.clientX, y: event.clientY })) return;
-      const videoId = link.videoId ?? link.video_id;
-      if (videoId) {
-        activateYoutube(element, videoId);
-      } else if (link.url) {
-        window.open(link.url, '_blank', 'noopener,noreferrer');
-      }
+    element.role = 'button';
+    element.tabIndex = 0;
+    element.setAttribute('aria-label', link.kind === 'youtube' ? 'Play YouTube video' : 'Open link');
+    element.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      activateLink(element, link);
     });
+    const imageRect = scaleRect(link, manifest.board, renderedBoard);
     viewer.addOverlay({
       element,
-      location: viewer.viewport.imageToViewportRectangle(link.x, link.y, link.width, link.height),
+      location: image.imageToViewportRectangle(
+        imageRect.x,
+        imageRect.y,
+        imageRect.width,
+        imageRect.height,
+      ),
     });
-  }
+    return { element, imageRect, link };
+  });
+}
+
+function addCanvasActivation(viewer: OpenSeadragon.Viewer, overlays: readonly InteractiveOverlay[]): void {
+  const image = viewer.world.getItemAt(0);
+  viewer.addHandler('canvas-click', (event) => {
+    if (!event.quick) return;
+    const viewportPoint = viewer.viewport.pointFromPixel(event.position);
+    const imagePoint = image.viewportToImageCoordinates(viewportPoint);
+    const overlay = overlays.find((candidate) => containsPoint(candidate.imageRect, imagePoint));
+    if (!overlay) return;
+    event.preventDefaultAction = true;
+    activateLink(overlay.element, overlay.link);
+  });
+}
+
+function activateLink(element: HTMLElement, link: BoardLink): void {
+  if (link.kind === 'youtube') activateYoutube(element, link.videoId);
+  else window.open(link.url, '_blank', 'noopener,noreferrer');
 }
 
 function activateYoutube(container: HTMLElement, videoId: string): void {
@@ -79,8 +117,27 @@ function activateYoutube(container: HTMLElement, videoId: string): void {
   iframe.allowFullscreen = true;
   container.replaceChildren(iframe);
   container.classList.add('is-active');
+  container.removeAttribute('role');
+  container.removeAttribute('aria-label');
+  container.tabIndex = -1;
+}
+
+async function loadManifest(): Promise<Manifest> {
+  const response = await fetch('manifest.json');
+  if (!response.ok) throw new Error(`manifest request returned ${response.status}`);
+  return response.json() as Promise<Manifest>;
+}
+
+function zoom(viewer: OpenSeadragon.Viewer, factor: number): void {
+  viewer.viewport.zoomBy(factor);
+  viewer.viewport.applyConstraints();
+}
+
+function enterFullscreen(): void {
+  void document.documentElement.requestFullscreen?.().catch(() => undefined);
 }
 
 main().catch((error) => {
-  document.body.textContent = `Failed to load notes viewer: ${error}`;
+  const status = document.getElementById('status');
+  if (status) status.textContent = `Failed to load notes: ${error instanceof Error ? error.message : String(error)}`;
 });

@@ -1,39 +1,51 @@
-# Freeform PDF Notes Site
+# Freeform Notes Site
 
-This repository turns one Apple Freeform PDF export into a high-fidelity, zoomable static website published by GitHub Pages.
+This repository publishes one Apple Freeform board as a faithful, zoomable static website. The PDF rendering is the visible board; the generator does not approximate drawings, handwriting, text, images, or shapes with HTML.
 
-Normal workflow:
+## Workflow
 
-1. Export the Apple Freeform board as PDF.
-2. Ensure the export consists of exactly one PDF page.
-3. Replace `./notes.pdf`.
-4. Commit and open a PR.
-5. CI validates and builds the site.
-6. Merge to `main`.
-7. GitHub Pages updates automatically.
+1. Export the Apple Freeform board as a single-page PDF.
+2. Keep exactly one PDF in the repository. Its filename and directory are arbitrary.
+3. Commit the replacement PDF and open a pull request.
+4. CI validates the PDF and builds the complete static site.
+5. Merge the pull request to `main`.
+6. GitHub Actions publishes the updated site to GitHub Pages.
 
-Local commands:
+The build fails when it finds zero PDFs, more than one PDF, an invalid PDF, or a PDF whose page count is not exactly one. Generated and dependency directories `.git`, `dist`, and `node_modules` are not source inputs.
+
+## YouTube Links
+
+YouTube videos are created only from real URI link annotations in the PDF. The generator does not use optical character recognition, computer vision, an external API, or image-based URL guessing. A YouTube screenshot without a PDF link annotation remains part of the rendered board but is not interactive.
+
+HTTP and HTTPS link annotations become clickable regions. A YouTube annotation opens an embedded `youtube-nocookie.com` player in its original board region; another web annotation opens in a new tab.
+
+## Local Development
+
+Prerequisites:
+
+- Node.js 22 or newer
+- Poppler command-line tools: `pdfinfo` and `pdftoppm`
+- QPDF command-line tool: `qpdf`
+
+Install the native tools on Ubuntu:
 
 ```bash
+sudo apt-get install -y poppler-utils qpdf
+```
+
+Install dependencies and run the project:
+
+```bash
+make install
 make inspect
 make test
 make build
 make serve
 ```
 
-The browser never parses or downloads `notes.pdf`. The Rust generator uses Poppler CLI tools to inspect and render the PDF, generates a Deep Zoom tile pyramid, writes `manifest.json`, and copies a small OpenSeadragon viewer into `dist/`.
+`make serve` publishes the generated site at `http://localhost:8000` until the command is stopped.
 
-## Requirements
-
-Install these tools locally:
-
-```bash
-sudo apt-get install -y poppler-utils qpdf
-```
-
-Required commands are `pdfinfo`, `pdftoppm`, `qpdf`, `cargo`, `node`, and `npm`.
-
-## Output
+## Generated Site
 
 `make build` creates:
 
@@ -42,41 +54,19 @@ dist/
 ├── index.html
 ├── assets/
 ├── manifest.json
+├── board-render.json
 ├── board.dzi
 └── board_files/
 ```
 
-## Hard Invariant
+The TypeScript generator delegates PDF inspection and rasterization to Poppler and QPDF, then uses Sharp/libvips to create a standard Deep Zoom image pyramid. The browser downloads only the generated static site. It does not download or parse the source PDF, and no server-side runtime is required.
 
-`notes.pdf` must exist and must contain exactly one page. Missing, invalid, empty, or multi-page PDFs fail inspection, tests, CI, and builds.
+## GitHub Pages
 
-## GitHub Pages Deployment
-
-Deploy this repository as an independent GitHub Pages project site, not as the root `bajor.github.io` user site.
-
-Expected default URL shape:
+Configure `Settings` -> `Pages` -> `Source` as `GitHub Actions`. A push to `main` runs `.github/workflows/pages.yml` and deploys `dist/` as a project site:
 
 ```text
 https://bajor.github.io/algos-for-slow-learners/
 ```
 
-This does not replace or modify another repository such as `bajor/bajor-dev-blog`. GitHub Pages treats each repository project site as a separate deployment under `https://<user>.github.io/<repository>/`.
-
-Repository settings required on GitHub:
-
-1. Open this repository on GitHub.
-2. Go to `Settings` -> `Pages`.
-3. Set `Source` to `GitHub Actions`.
-4. Merge changes to `main`.
-5. The workflow in `.github/workflows/pages.yml` builds `dist/` and deploys it.
-
-The repository can stay private while the implementation is developed. Before publishing the GitHub Pages site publicly, do the following on GitHub:
-
-1. Decide whether the generated notes should be public, because GitHub Pages serves the deployed `dist/` files publicly for public project sites.
-2. If public publishing is acceptable, change the repository visibility to public or confirm that the GitHub account plan supports Pages for private repositories.
-3. Open `Settings` -> `Pages`.
-4. Set `Source` to `GitHub Actions`.
-5. Merge a PR to `main` and wait for the `Deploy Pages` workflow to complete.
-6. Open `https://bajor.github.io/algos-for-slow-learners/`.
-
-The generated site is project-path-safe. `make build` uses `vite build --base ./`, and runtime files are referenced relatively, for example `manifest.json`, `board.dzi`, and `board_files/...`. The generated website does not require `notes.pdf`, a backend, Poppler, QPDF, Rust, Node, or npm at runtime.
+The generated paths are relative, so deployment under the repository project path does not interfere with another site at `https://bajor.github.io/`.

@@ -1,15 +1,22 @@
-# PDF Engine Investigation
+# PDF Tooling
 
-The implementation uses Poppler CLI tools from `poppler-utils`.
+The generator deliberately does not implement PDF parsing or rendering.
 
-Poppler is a mature PDF parser and renderer used by common Linux PDF tooling. The generator delegates page-count validation, page box inspection, annotation extraction, and raster rendering to Poppler commands instead of implementing PDF internals.
+## Poppler
 
-Selected commands:
+Poppler is a mature PDF implementation used by common Linux PDF tools. The build invokes:
 
-- `pdfinfo -box`: page count, `MediaBox`, `CropBox`, rotation.
-- `qpdf --json`: URI link annotation rectangles and URLs.
-- `pdftoppm -png -singlefile -r <dpi>`: deterministic page rasterization.
+- `pdfinfo -box` for page count, MediaBox, CropBox, and page rotation;
+- `pdftoppm -png -singlefile` for deterministic, high-resolution page rendering.
 
-The tile format is PNG Deep Zoom Image. PNG was selected for the initial implementation because it preserves thin handwriting and small text without lossy artifacts. WebP can reduce output size later, but PNG is the safer default for visual fidelity.
+Poppler is GPL-licensed. It is invoked as an external build-time command and is not shipped with the static site.
 
-Poppler is GPL-licensed. QPDF uses the Apache License 2.0. This repository invokes both tools as external commands in local development and CI rather than linking either implementation into the Rust binary.
+## QPDF
+
+`qpdf --json` provides the page object graph, URI link annotations, and annotation rectangles. Recoverable QPDF warnings remain visible in local and CI logs; the real iOS export currently reports two unused objects with zero offsets. QPDF uses the Apache License 2.0 and is invoked as an external build-time command.
+
+## Sharp And libvips
+
+Sharp uses libvips to transform the Poppler PNG into a standards-compliant Deep Zoom pyramid. Sharp uses the Apache License 2.0; libvips uses the GNU Lesser General Public License 2.1 or later. Both are build-time dependencies and are absent from the deployed site.
+
+This division keeps PDF interpretation in production-proven PDF software and limits project-owned logic to validation, coordinate conversion, URL classification, deterministic metadata, and orchestration.

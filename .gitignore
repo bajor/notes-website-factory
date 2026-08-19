@@ -1,7 +1,4 @@
 dist/
-target/
-generator/target/
-viewer/node_modules/
+node_modules/
 viewer/dist/
-*.ppm
 *.tmp

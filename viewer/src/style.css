@@ -5,20 +5,31 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #111;
+  background: #e9e8e4;
   touch-action: none;
+}
+
+#status {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  color: #45443f;
+  font: 500 14px system-ui, sans-serif;
+  z-index: 5;
 }
 
 #toolbar {
   position: fixed;
-  left: max(12px, env(safe-area-inset-left));
-  bottom: max(12px, env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  bottom: max(14px, env(safe-area-inset-bottom));
   display: flex;
   gap: 8px;
   padding: 8px;
   border-radius: 999px;
-  background: rgb(20 20 20 / 80%);
-  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 14%);
+  background: rgb(24 24 22 / 82%);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
+  backdrop-filter: blur(14px);
   z-index: 10;
 }
 
@@ -30,16 +41,21 @@ body,
   color: white;
   background: rgb(255 255 255 / 18%);
   font: 600 14px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+#toolbar button:active {
+  background: rgb(255 255 255 / 30%);
 }
 
 .link-overlay {
   display: block;
   width: 100%;
   height: 100%;
-  padding: 0;
   border: 2px solid transparent;
   background: transparent;
   cursor: pointer;
+  pointer-events: none;
 }
 
 .link-overlay:focus-visible {
@@ -49,6 +65,7 @@ body,
 .link-overlay.is-active {
   border: 0;
   background: #000;
+  pointer-events: auto;
 }
 
 .link-overlay iframe {

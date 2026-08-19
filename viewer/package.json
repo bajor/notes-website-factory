@@ -1,7 +1,8 @@
 {
   "scripts": {
     "build": "vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@types/openseadragon": "^3.0.10",

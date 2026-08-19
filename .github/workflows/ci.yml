@@ -7,17 +7,18 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.18.0
           cache: npm
-          cache-dependency-path: viewer/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
-      - run: sudo apt-get update && sudo apt-get install -y poppler-utils qpdf
-      - run: npm --prefix viewer install
+          cache-dependency-path: |
+            generator/package-lock.json
+            viewer/package-lock.json
+      - run: ./scripts/install-ci-dependencies.sh
+      - run: make install
       - run: make inspect
       - run: make test
       - run: make build
