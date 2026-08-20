@@ -36,15 +36,21 @@ body,
 .scene-image,
 .scene-text,
 .scene-link,
-.scene-path {
+.scene-svg {
   position: absolute;
   transform-origin: 0 0;
 }
 
-.scene-image {
-  width: 1px;
-  height: 1px;
-  max-width: none;
+.scene-svg {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.scene-image,
+.scene-vector-artwork,
+.scene-path {
   pointer-events: none;
 }
 

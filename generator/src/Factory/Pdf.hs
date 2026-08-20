@@ -19,6 +19,7 @@ import Control.Monad (forM, unless, when)
 import Control.Monad.Except (ExceptT, liftEither, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (ByteString)
+import Data.Foldable (traverse_)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes, fromMaybe)
@@ -26,7 +27,8 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Factory.Domain
 import Factory.Geometry (rectangleToBoard)
-import Factory.Interpreter (Resources (Resources), interpretOperators)
+import Factory.Interpreter (Resources (Resources), VisualResource (..), interpretOperators)
+import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
 import Network.URI (URI (uriAuthority, uriPath, uriQuery, uriScheme), URIAuth (uriRegName), parseURI)
 import Pdf.Content (Expr, Operator, parseContent, readNextOperator)
 import Pdf.Core
@@ -57,7 +59,7 @@ import Pdf.Document
   )
 import Pdf.Document.Internal.Types (Page (Page))
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath ((</>))
+import System.FilePath (takeFileName, (</>))
 import qualified Data.ByteString as ByteString
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map.Strict as Map
@@ -72,6 +74,8 @@ data PdfSummary = PdfSummary
   { summaryPageCount :: Int
   , summaryOperatorCount :: Int
   , summaryImageCount :: Int
+  , summaryVectorCount :: Int
+  , summaryRasterCount :: Int
   , summaryLinkCount :: Int
   , summaryWidth :: Double
   , summaryHeight :: Double
@@ -79,6 +83,23 @@ data PdfSummary = PdfSummary
   deriving stock (Eq, Show)
 
 type PdfAction = ExceptT BuildError IO
+
+data PreparedImage
+  = PreparedJpeg Asset ByteString
+  | PreparedPng Asset (Image PixelRGBA8)
+  | PreparedVector [VectorShape]
+
+preparedResource :: PreparedImage -> VisualResource
+preparedResource prepared = case prepared of
+  PreparedJpeg asset _ -> RasterResource (assetId asset)
+  PreparedPng asset _ -> RasterResource (assetId asset)
+  PreparedVector shapes -> VectorResource shapes
+
+preparedAsset :: PreparedImage -> Maybe Asset
+preparedAsset prepared = case prepared of
+  PreparedJpeg asset _ -> Just asset
+  PreparedPng asset _ -> Just asset
+  PreparedVector _ -> Nothing
 
 parsePdf :: FilePath -> FilePath -> IO (Either BuildError (Scene 'Unvalidated, PdfSummary))
 parsePdf pdfPath assetDirectory = do
@@ -96,12 +117,17 @@ parseOpenPdf assetDirectory pdf = do
   page@(Page _ _ pageDictionary) <- liftIO (pageNodePageByNum rootPages 0)
   (width, height) <- pageDimensions page
   resources <- requireResolvedDict pdf pageDictionary "Resources"
-  liftIO (createDirectoryIfMissing True assetDirectory)
-  (assets, imageMap) <- extractImages pdf assetDirectory resources
+  preparedImages <- prepareImages pdf resources
   alphaMap <- extractAlphaStates pdf resources
   operators <- readPageOperators pdf page
+  let imageMap = Map.map preparedResource preparedImages
   contentNodes <- liftEither (interpretOperators (Coordinate height) (Resources imageMap alphaMap) operators)
   links <- extractLinks pdf pageDictionary (Coordinate height)
+  let referencedAssets = Set.fromList [identifier | ImageNode identifier _ _ _ <- contentNodes]
+      usedImages = filter (isUsedRaster referencedAssets) (Map.elems preparedImages)
+  assets <- materializeImages assetDirectory usedImages
+  let vectorCount = length (filter isPreparedVector (Map.elems preparedImages))
+      rasterCount = length assets
   let scene =
         Scene
           { sceneWidth = Coordinate width
@@ -109,8 +135,17 @@ parseOpenPdf assetDirectory pdf = do
           , sceneAssets = assets
           , sceneContent = contentNodes <> links
           }
-      summary = PdfSummary 1 (length operators) (length assets) (length links) width height
+      summary = PdfSummary 1 (length operators) (Map.size preparedImages) vectorCount rasterCount (length links) width height
   pure (scene, summary)
+
+isPreparedVector :: PreparedImage -> Bool
+isPreparedVector PreparedVector {} = True
+isPreparedVector _ = False
+
+isUsedRaster :: Set AssetId -> PreparedImage -> Bool
+isUsedRaster referenced prepared = case preparedAsset prepared of
+  Just asset -> Set.member (assetId asset) referenced
+  Nothing -> True
 
 pageDimensions :: Page -> PdfAction (Double, Double)
 pageDimensions page = do
@@ -143,22 +178,21 @@ collectOperators expressions reversed = do
     Nothing -> pure (reverse reversed)
     Just operator -> collectOperators expressions (operator : reversed)
 
-extractImages :: Pdf -> FilePath -> Dict -> PdfAction ([Asset], Map Name AssetId)
-extractImages pdf assetDirectory resources = do
+prepareImages :: Pdf -> Dict -> PdfAction (Map Name PreparedImage)
+prepareImages pdf resources = do
   xobjects <- optionalResolvedDict pdf resources "XObject"
   extracted <- forM (sortOn (nameText . fst) (HashMap.toList xobjects)) $ \(resourceName, object) -> do
     resolved <- resolveWithReference pdf object
     case resolved of
       Just (reference, Stream stream@(S dictionary _))
         | HashMap.lookup "Subtype" dictionary == Just (Name "Image") -> do
-            asset <- extractImage pdf assetDirectory resourceName reference stream dictionary
-            pure (Just (asset, (resourceName, assetId asset)))
+            prepared <- prepareImage pdf resourceName reference stream dictionary
+            pure (Just (resourceName, prepared))
       _ -> pure Nothing
-  let pairs = catMaybes extracted
-  pure (map fst pairs, Map.fromList (map snd pairs))
+  pure (Map.fromList (catMaybes extracted))
 
-extractImage :: Pdf -> FilePath -> Name -> Ref -> Stream -> Dict -> PdfAction Asset
-extractImage pdf assetDirectory resourceName reference stream dictionary = do
+prepareImage :: Pdf -> Name -> Ref -> Stream -> Dict -> PdfAction PreparedImage
+prepareImage pdf resourceName reference stream dictionary = do
   width <- requireInt dictionary "Width"
   height <- requireInt dictionary "Height"
   bits <- requireInt dictionary "BitsPerComponent"
@@ -173,16 +207,34 @@ extractImage pdf assetDirectory resourceName reference stream dictionary = do
       when (HashMap.member "SMask" dictionary) (throwError (UnsupportedImage "JPEG images with soft masks are not supported"))
       bytes <- readRawStream pdf reference stream
       let fileName = baseName <> ".jpg"
-      liftIO (ByteString.writeFile (assetDirectory </> fileName) bytes)
-      pure (Asset identifier ("assets/" <> fileName) width height)
+      pure (PreparedJpeg (Asset identifier ("assets/" <> fileName) width height) bytes)
     "FlateDecode" -> do
       colorBytes <- readDecodedStream pdf reference stream
       alphaBytes <- readSoftMask pdf dictionary width height
       image <- liftEither (rgbaImage width height components colorBytes alphaBytes)
-      let fileName = baseName <> ".png"
-      liftIO (writePng (assetDirectory </> fileName) image)
-      pure (Asset identifier ("assets/" <> fileName) width height)
+      disposition <- case classifyImage alphaBytes of
+        Left (UnsupportedImage message) -> throwError (UnsupportedImage (nameText resourceName <> ": " <> message))
+        Left buildError -> throwError buildError
+        Right classified -> pure classified
+      case disposition of
+        PreserveRaster ->
+          let fileName = baseName <> ".png"
+           in pure (PreparedPng (Asset identifier ("assets/" <> fileName) width height) image)
+        TraceAsVector -> PreparedVector <$> liftEither (traceImage image)
     unsupported -> throwError (UnsupportedImage ("unsupported image filter: " <> unsupported))
+
+materializeImages :: FilePath -> [PreparedImage] -> PdfAction [Asset]
+materializeImages assetDirectory preparedImages = do
+  let assets = catMaybes (map preparedAsset preparedImages)
+  unless (null assets) (liftIO (createDirectoryIfMissing True assetDirectory))
+  traverse_ writePrepared preparedImages
+  pure assets
+  where
+    writePrepared prepared = case prepared of
+      PreparedJpeg asset bytes -> liftIO (ByteString.writeFile (assetPath asset) bytes)
+      PreparedPng asset image -> liftIO (writePng (assetPath asset) image)
+      PreparedVector _ -> pure ()
+    assetPath asset = assetDirectory </> takeFileName (assetFile asset)
 
 readSoftMask :: Pdf -> Dict -> Int -> Int -> PdfAction (Maybe ByteString)
 readSoftMask pdf dictionary width height = case HashMap.lookup "SMask" dictionary of

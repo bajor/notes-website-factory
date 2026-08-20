@@ -20,6 +20,7 @@ import System.FilePath ((</>))
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Set as Set
+import qualified Data.Text as Text
 
 validateScene :: Scene 'Unvalidated -> Either BuildError (Scene 'Validated)
 validateScene scene
@@ -28,6 +29,7 @@ validateScene scene
   | identifiers /= nub identifiers = Left (InvalidScene "asset identifiers must be unique")
   | any invalidAsset (sceneAssets scene) = Left (InvalidScene "asset dimensions must be positive")
   | any (referencesMissingAsset knownAssets) nodes = Left (InvalidScene "image node references a missing asset")
+  | knownAssets /= referencedAssets = Left (InvalidScene "scene contains an unreferenced asset")
   | any (not . nodeIsFinite) (sceneContent scene) = Left (InvalidScene "scene contains a non-finite number")
   | any (not . nodeValuesAreValid) nodes = Left (InvalidScene "scene contains an invalid size, color, or opacity")
   | any imageTransformIsUnsupported nodes = Left (InvalidScene "rotated or sheared images are not supported")
@@ -45,6 +47,7 @@ validateScene scene
     height = unCoordinate (sceneHeight scene)
     identifiers = map assetId (sceneAssets scene)
     knownAssets = Set.fromList identifiers
+    referencedAssets = Set.fromList [identifier | ImageNode identifier _ _ _ <- nodes]
     nodes = sceneContent scene
 
 writeSite :: FilePath -> FilePath -> Scene 'Validated -> IO ()
@@ -64,6 +67,7 @@ writeSite templateDirectory outputDirectory scene = do
             , "height" .= unCoordinate (sceneHeight scene)
             , "assets" .= length (sceneAssets scene)
             , "images" .= countNodes isImage scene
+            , "vectorArtworks" .= countNodes isVectorArtwork scene
             , "paths" .= countNodes isPath scene
             , "texts" .= countNodes isText scene
             , "links" .= countNodes isLink scene
@@ -73,6 +77,7 @@ writeSite templateDirectory outputDirectory scene = do
 nodeIsFinite :: SceneNode -> Bool
 nodeIsFinite node = case node of
   ImageNode _ matrix opacity clips -> matrixIsFinite matrix && finite opacity && all clipIsFinite clips
+  VectorArtworkNode shapes matrix opacity clips -> all vectorShapeIsFinite shapes && matrixIsFinite matrix && finite opacity && all clipIsFinite clips
   PathNode commands style clips -> all commandIsFinite commands && styleIsFinite style && all clipIsFinite clips
   TextNode run clips -> matrixIsFinite (textMatrix run) && finite (textFontSize run) && finite (textOpacity run) && all clipIsFinite clips
   LinkNode _ rectangle -> all finite [coordinate (rectX rectangle), coordinate (rectY rectangle), coordinate (rectWidth rectangle), coordinate (rectHeight rectangle)]
@@ -98,6 +103,7 @@ referencesMissingAsset _ _ = False
 nodeValuesAreValid :: SceneNode -> Bool
 nodeValuesAreValid node = case node of
   ImageNode _ _ opacity _ -> unitInterval opacity
+  VectorArtworkNode shapes _ opacity _ -> not (null shapes) && unitInterval opacity && all vectorShapeIsValid shapes
   PathNode _ style _ -> paintLineWidth style >= 0 && unitInterval (paintOpacity style) && maybe True (colorIsValid . fst) (paintFill style) && maybe True colorIsValid (paintStroke style)
   TextNode run _ -> textFontSize run > 0 && unitInterval (textOpacity run)
   LinkNode _ rectangle -> unCoordinate (rectWidth rectangle) > 0 && unCoordinate (rectHeight rectangle) > 0
@@ -118,6 +124,12 @@ styleIsFinite style =
 colorIsFinite :: Color -> Bool
 colorIsFinite color = all finite [colorRed color, colorGreen color, colorBlue color]
 
+vectorShapeIsFinite :: VectorShape -> Bool
+vectorShapeIsFinite shape = colorIsFinite (vectorColor shape) && finite (vectorOpacity shape)
+
+vectorShapeIsValid :: VectorShape -> Bool
+vectorShapeIsValid shape = not (Text.null (unVectorPath (vectorPath shape))) && colorIsValid (vectorColor shape) && unitInterval (vectorOpacity shape)
+
 clipIsFinite :: ClipPath -> Bool
 clipIsFinite = all commandIsFinite . clipCommands
 
@@ -133,6 +145,7 @@ pointIsFinite point = all (finite . unCoordinate) [pointX point, pointY point]
 
 imageTransformIsUnsupported :: SceneNode -> Bool
 imageTransformIsUnsupported (ImageNode _ matrix _ _) = abs (matrixB matrix) > matrixTolerance || abs (matrixC matrix) > matrixTolerance
+imageTransformIsUnsupported (VectorArtworkNode _ matrix _ _) = abs (matrixB matrix) > matrixTolerance || abs (matrixC matrix) > matrixTolerance
 imageTransformIsUnsupported _ = False
 
 matrixTolerance :: Double
@@ -154,9 +167,11 @@ imageCoversBoard _ _ _ = False
 countNodes :: (SceneNode -> Bool) -> Scene phase -> Int
 countNodes predicate = length . filter predicate . sceneNodes
 
-isImage, isPath, isText, isLink :: SceneNode -> Bool
+isImage, isVectorArtwork, isPath, isText, isLink :: SceneNode -> Bool
 isImage ImageNode {} = True
 isImage _ = False
+isVectorArtwork VectorArtworkNode {} = True
+isVectorArtwork _ = False
 isPath PathNode {} = True
 isPath _ = False
 isText TextNode {} = True
