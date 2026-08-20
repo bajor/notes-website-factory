@@ -1,7 +1,11 @@
 dist/
-target/
-generator/target/
+dist.building/
+dist.previous/
+build/
+dist-newstyle/
+generator/dist-newstyle/
+cabal.project.local
 viewer/node_modules/
-viewer/dist/
+.DS_Store
 *.ppm
 *.tmp

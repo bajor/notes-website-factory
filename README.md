@@ -1,82 +1,155 @@
-# Freeform PDF Notes Site
+# Algorithms for Slow Learners
 
-This repository turns one Apple Freeform PDF export into a high-fidelity, zoomable static website published by GitHub Pages.
+This repository is a small Haskell software factory. It reads the repository's one-page Apple Freeform PDF, interprets its PDF drawing instructions, and generates a zoomable static website.
 
-Normal workflow:
+The project has two products:
 
-1. Export the Apple Freeform board as PDF.
-2. Ensure the export consists of exactly one PDF page.
-3. Replace `./notes.pdf`.
-4. Commit and open a PR.
-5. CI validates and builds the site.
-6. Merge to `main`.
-7. GitHub Pages updates automatically.
+- `dist/`, a browser-ready site made from JavaScript, DOM elements, Canvas paths, and extracted image assets;
+- a readable example of functional programming, typed boundaries, and evidence-driven parser development.
 
-Local commands:
+The deployed browser never downloads or parses the PDF. Poppler is used only as a development oracle for visual comparison, not as the production renderer.
+
+## Quick Start
+
+Required versions:
+
+- GHC 9.6.6;
+- Cabal 3.10.3.0;
+- `zlib1g-dev` for the PDF library;
+- Poppler's `pdftoppm` and Chromium only for `make evaluate`;
+- Python 3 only for `make serve`.
+
+On Ubuntu, install the system libraries with:
 
 ```bash
-make inspect
+sudo apt-get update
+sudo apt-get install -y zlib1g-dev poppler-utils
+```
+
+Install Chromium or Chrome separately if the `chromium` command is unavailable. Set `CHROMIUM=/absolute/path/to/chrome` when the browser uses another command name.
+
+Then run:
+
+```bash
+cabal update
 make test
-make build
+make evaluate
 make serve
 ```
 
-The browser never parses or downloads `notes.pdf`. The Rust generator uses Poppler CLI tools to inspect and render the PDF, generates a Deep Zoom tile pyramid, writes `manifest.json`, and copies a small OpenSeadragon viewer into `dist/`.
+Open `http://localhost:8000`. `make serve` builds `dist/` before starting the local server.
 
-## Requirements
+## Factory Commands
 
-Install these tools locally:
+| Command | Result |
+| --- | --- |
+| `make inspect` | Finds the only PDF and reports its page, operator, image, and link counts. |
+| `make test` | Compiles with warnings as errors, runs unit tests, parses the real PDF, builds the site, and validates `dist/`. |
+| `make build` | Generates the static site in `dist/`. Set `DIST=/path` to choose another output directory. |
+| `make evaluate` | Rebuilds the site, compares it with Poppler's rendering, and writes evidence to `build/evaluation/`. |
+| `make serve` | Serves `dist/` at `http://localhost:8000`. |
 
-```bash
-sudo apt-get install -y poppler-utils qpdf
+## Learn the Code in Order
+
+1. Start with `generator/src/Factory/Domain.hs`. Domain types name coordinates, assets, links, scene nodes, and failures. The `Scene` phase parameter distinguishes `Scene 'Unvalidated` from `Scene 'Validated`.
+2. Read `generator/src/Factory/Geometry.hs`. Every function is pure: the same matrix and point always produce the same result.
+3. Read `generator/src/Factory/Interpreter.hs`. `foldM` implements an immutable state machine. Each PDF operator receives the old machine and returns either a typed error or a new machine.
+4. Read `generator/src/Factory/Pdf.hs`. This is the PDF effect boundary. `pdf-toolbox` reads objects and streams; this module converts them into the project's domain.
+5. Read `generator/src/Factory/Site.hs`. Validation changes the scene's type before JavaScript can be emitted.
+6. Read `generator/src/Factory/Pipeline.hs`. This is the imperative shell that discovers files, stages output, and connects the pure stages.
+7. Read `generator/src/Factory/Evaluation.hs`. The parser's output is compared with a mature renderer so that visual errors become measurable evidence.
+
+## Functional Programming Ideas
+
+### Pure Core, Effectful Shell
+
+Geometry, operator interpretation, URL classification, and scene validation do not choose files or mutate global state. File and process operations stay at the edges in `Factory.Pdf`, `Factory.Site`, `Factory.Evaluation`, and `Factory.Pipeline`.
+
+This separation makes failures reproducible. A failing operator list can be passed directly to `interpretOperators` without opening a PDF or browser.
+
+### Invalid States Become Hard to Express
+
+PDF and browser coordinates use separate phantom types:
+
+```haskell
+pdfPointToBoard :: Coordinate PdfSpace -> Point PdfSpace -> Point BoardSpace
 ```
 
-Required commands are `pdfinfo`, `pdftoppm`, `qpdf`, `cargo`, `node`, and `npm`.
+An unvalidated scene cannot be passed to the emitter:
 
-## Output
+```haskell
+validateScene :: Scene 'Unvalidated -> Either BuildError (Scene 'Validated)
+writeSite :: FilePath -> FilePath -> Scene 'Validated -> IO ()
+```
 
-`make build` creates:
+The compiler enforces the order. Runtime validation still checks values that types alone cannot prove, including finite dimensions, valid opacities, known assets, and the prohibition on a full-board raster substitute.
+
+### Errors Are Values
+
+Expected failures use `Either BuildError value`. Missing resources, unsupported image formats, invalid graphics state, unsafe output paths, and failed evaluation do not require hidden exceptions to cross the functional core.
+
+## AI Engineering Loop
+
+Treat parser work as a measured loop rather than a one-shot generation prompt:
+
+1. Inspect the source PDF and record objective facts.
+2. Add the smallest domain type or operator transition needed by the evidence.
+3. Add one focused unit test for that transition.
+4. Run `make test` to prove compilation, unit behavior, real-PDF parsing, and deployable output.
+5. Run `make evaluate` to compare the generated browser scene with Poppler's reference.
+6. Inspect `build/evaluation/report.html` and the amplified difference image.
+7. Repeat only where the evidence shows a gap.
+
+The evaluator currently requires all of these conditions:
+
+- mean normalized channel error at most `0.02`;
+- at least `0.96` of pixels within the per-channel tolerance;
+- generated/reference ink ratio from `0.85` through `1.15`;
+- a browser DOM marked `data-ready="true"` after all image and font loads finish.
+
+## Input Contract
+
+The repository must contain exactly one non-symlink PDF file, and that PDF must contain exactly one page. `Algos.pdf` is the current source.
+
+The current implementation intentionally targets the observed Apple Freeform export profile:
+
+- unrotated page with matching zero-origin MediaBox and CropBox;
+- JPEG and 8-bit Flate image XObjects, including Flate soft masks;
+- axis-aligned image transforms;
+- clipping paths, common color operators, and Freeform's opacity resources;
+- HTTP and HTTPS URI annotations, including YouTube watch, short, and embed URLs;
+- no text objects in the current source; text operators fail until font decoding and metrics are implemented.
+
+Unsupported PDF operators or structures fail the build instead of being silently discarded. Known limitations are documented in `docs/pdf-investigation.md`.
+
+## Generated Output
+
+`make build` writes:
 
 ```text
 dist/
-├── index.html
-├── assets/
-├── manifest.json
-├── board.dzi
-└── board_files/
+|-- assets/
+|-- index.html
+|-- runtime.js
+|-- scene.generated.js
+|-- scene-summary.json
+`-- styles.css
 ```
 
-## Hard Invariant
+The output contains no PDF, OCR result, SVG rendering, full-page screenshot, Rust bundle, TypeScript bundle, Node dependency, or server component. All references are relative so the site works under the GitHub Pages project path.
 
-`notes.pdf` must exist and must contain exactly one page. Missing, invalid, empty, or multi-page PDFs fail inspection, tests, CI, and builds.
+## Deployment
 
-## GitHub Pages Deployment
+`.github/workflows/pages.yml` builds `dist/` with GHC 9.6.6 and Cabal 3.10.3.0, then deploys it through the official GitHub Pages actions. Configure the repository's Pages source as **GitHub Actions**.
 
-Deploy this repository as an independent GitHub Pages project site, not as the root `bajor.github.io` user site.
+The PR-only architecture diagram cleanup uses the `REMOVE_VISUALS_MAIN` repository secret. The `bajor` user is the only bypass actor on the `require-pr-main` ruleset so that the cleanup commit can remove merged review artifacts.
 
-Expected default URL shape:
+Expected project URL:
 
 ```text
 https://bajor.github.io/algos-for-slow-learners/
 ```
 
-This does not replace or modify another repository such as `bajor/bajor-dev-blog`. GitHub Pages treats each repository project site as a separate deployment under `https://<user>.github.io/<repository>/`.
+## Acceptance Criteria
 
-Repository settings required on GitHub:
-
-1. Open this repository on GitHub.
-2. Go to `Settings` -> `Pages`.
-3. Set `Source` to `GitHub Actions`.
-4. Merge changes to `main`.
-5. The workflow in `.github/workflows/pages.yml` builds `dist/` and deploys it.
-
-The repository can stay private while the implementation is developed. Before publishing the GitHub Pages site publicly, do the following on GitHub:
-
-1. Decide whether the generated notes should be public, because GitHub Pages serves the deployed `dist/` files publicly for public project sites.
-2. If public publishing is acceptable, change the repository visibility to public or confirm that the GitHub account plan supports Pages for private repositories.
-3. Open `Settings` -> `Pages`.
-4. Set `Source` to `GitHub Actions`.
-5. Merge a PR to `main` and wait for the `Deploy Pages` workflow to complete.
-6. Open `https://bajor.github.io/algos-for-slow-learners/`.
-
-The generated site is project-path-safe. `make build` uses `vite build --base ./`, and runtime files are referenced relatively, for example `manifest.json`, `board.dzi`, and `board_files/...`. The generated website does not require `notes.pdf`, a backend, Poppler, QPDF, Rust, Node, or npm at runtime.
+Work is complete when `make test` and `make evaluate` pass, `dist/` contains no PDF, the desktop and mobile browser interactions work, the evaluation report records a passing result, and the generated site can be deployed without Rust, Node, Poppler, Chromium, or Haskell at runtime.

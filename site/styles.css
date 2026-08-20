@@ -1,0 +1,115 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+}
+
+html,
+body,
+#viewport {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #e9e8e4;
+}
+
+#viewport {
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+}
+
+#viewport.is-dragging {
+  cursor: grabbing;
+}
+
+#board {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  background: white;
+  will-change: transform;
+}
+
+.scene-layer,
+.scene-image,
+.scene-text,
+.scene-link,
+.scene-path {
+  position: absolute;
+  transform-origin: 0 0;
+}
+
+.scene-image {
+  width: 1px;
+  height: 1px;
+  max-width: none;
+  pointer-events: none;
+}
+
+.scene-text {
+  left: 0;
+  top: 0;
+  white-space: pre;
+  line-height: 1;
+  transform-origin: 0 0;
+}
+
+.scene-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.scene-embed {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: black;
+}
+
+#viewport:focus-visible,
+.scene-link:focus-visible,
+#controls button:focus-visible {
+  outline: 3px solid #087ea4;
+  outline-offset: 3px;
+}
+
+#status {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  color: #45443f;
+  font-size: 14px;
+}
+
+#controls {
+  position: fixed;
+  left: max(14px, env(safe-area-inset-left));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 100;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 999px;
+  background: rgb(24 24 22 / 82%);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
+  backdrop-filter: blur(14px);
+}
+
+#controls[hidden] {
+  display: none;
+}
+
+#controls button {
+  min-width: 42px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 999px;
+  color: white;
+  background: rgb(255 255 255 / 18%);
+  font: 600 14px system-ui, sans-serif;
+  cursor: pointer;
+}
