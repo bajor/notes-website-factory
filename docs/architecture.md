@@ -1,42 +1,62 @@
 # Architecture
 
-`notes.pdf` is the single source of truth. The repository accepts exactly one PDF page and rejects every other page count.
+## Data Flow
 
-Pipeline:
+The production path is:
 
 ```text
-notes.pdf
-  -> Poppler adapter
-  -> immutable Rust document model
-  -> pure geometry and URL transformations
-  -> manifest.json
-  -> PNG Deep Zoom tile pyramid
-  -> TypeScript OpenSeadragon viewer
+one repository PDF
+  -> pdf-toolbox objects and streams
+  -> immutable Haskell graphics-state interpreter
+  -> Scene 'Unvalidated
+  -> validateScene
+  -> Scene 'Validated
+  -> generated JavaScript scene plus extracted image assets
+  -> DOM, Canvas, and lazy YouTube iframe
   -> GitHub Pages
 ```
 
-The generator uses Rust because the core model benefits from explicit `Result` errors, enums, immutable values, deterministic serialization, and property-based tests.
+The independent development feedback path is:
 
-Custom PDF parsing is forbidden. Page boxes and rendering are delegated to Poppler, and annotation extraction is delegated to QPDF JSON output, because PDF parsing is a large compatibility problem and not part of this project.
+```text
+source PDF -> Poppler reference PNG
+generated dist/ -> headless Chromium screenshot
+both images -> numerical comparison plus amplified difference image
+```
 
-Effects live in `generator/src/pdf_adapter.rs` and `generator/src/main.rs`. Pure transformations live in `domain.rs`, `geometry.rs`, `links.rs`, `manifest.rs`, and `render.rs`.
+The Poppler image is written only under `build/evaluation/`. It is never copied into `dist/`.
 
-The canonical board coordinate system uses top-left origin and PDF point units. `geometry.rs` owns conversion from PDF rectangles to board rectangles, including crop offsets, axis inversion, and page rotation.
+## Module Boundaries
 
-Rendering uses a tile pyramid instead of one huge browser image. `pdftoppm` renders the single page to a high-resolution PNG, and `render.rs` generates standard Deep Zoom Image tiles under `dist/board_files/` plus `dist/board.dzi`.
+| Module | Responsibility | Effects |
+| --- | --- | --- |
+| `Factory.Domain` | Coordinates, matrices, nodes, assets, URLs, validation phases, and errors | None |
+| `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
+| `Factory.Interpreter` | PDF operator state machine and scene-node emission | None |
+| `Factory.Pdf` | Open PDF, resolve objects, decode streams, extract assets and annotations | File input and asset output |
+| `Factory.Site` | Validate scene and emit deterministic site files | Site output |
+| `Factory.Evaluation` | Run external oracle/browser and compare pixels | Processes and report output |
+| `Factory.Pipeline` | Discover input, stage builds, promote valid output, dispatch commands | Filesystem orchestration |
 
-The viewer uses OpenSeadragon because it already solves tiled loading, pan, zoom, mouse, trackpad, touch, pinch zoom, and image-space overlays.
+`site/runtime.js` is deliberately small. It renders the already validated scene and owns pan, zoom, touch, keyboard navigation, fullscreen, external links, and lazy YouTube activation. It does not understand PDF syntax.
 
-YouTube links come from PDF URI annotations only. The generator does not use OCR, computer vision, external APIs, or build-time AI. A YouTube-looking image without a URI annotation remains visible but cannot become an embedded video.
+## Safety Boundaries
 
-YouTube iframes are lazy. The initial page renders only the board tiles and transparent overlays. When a user activates a YouTube region, the viewer inserts a `youtube-nocookie.com` iframe inside that exact overlay rectangle.
+The build applies these boundaries in order:
 
-Determinism rules:
+1. `discoverSinglePdf` requires exactly one non-symlink PDF below the repository root and skips generated directories.
+2. The parser requires exactly one page and returns a `BuildError` for unsupported structures.
+3. `validateScene` checks finite positive dimensions, unique and valid assets, asset references, colors, opacity, supported image transforms, and the full-board-raster prohibition.
+4. `validateOutputPath` rejects output, staging, or backup directories that equal or contain the repository root; parent symlinks are resolved before this check.
+5. The site is written to `DIST.building`; promotion keeps the previous output at `DIST.previous` until the replacement succeeds.
+6. `make validate-dist` checks required files, extracted assets, relative URLs, and absence of deployed PDFs.
 
-- manifest links are sorted deterministically;
-- JSON is pretty-printed from typed structures;
-- tile paths are deterministic;
-- build identity is the SHA-256 of `notes.pdf`;
-- no generated timestamps are written into artifacts.
+## Determinism
 
-GitHub Pages deployment is owned by `.github/workflows/pages.yml` and deploys `dist/` with the official Pages actions. The repository is designed as an independent project site at `https://<user>.github.io/<repository>/`, so it does not interfere with a separate user-site or blog repository at `https://<user>.github.io/`.
+- PDF resources are sorted before asset extraction.
+- Generated JSON contains no timestamp or random identifier.
+- The dependency solver is fixed by `cabal.project.freeze`.
+- GHC and Cabal versions are fixed in both GitHub workflows.
+- Evaluation fixes browser device scale and records all numerical thresholds in `evaluation.json`.
+
+The evaluation depends on the installed Poppler and Chrome renderers, so small antialiasing differences can still occur across package revisions. CI selects the `ubuntu-24.04` runner family and evaluates against explicit tolerances rather than exact pixel equality.

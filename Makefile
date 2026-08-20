@@ -1,34 +1,35 @@
-.PHONY: inspect test build serve fixtures validate-dist
+.PHONY: build evaluate inspect serve test validate-dist
 
-PDF ?= notes.pdf
-DIST ?= dist
+CABAL ?= cabal
+DIST ?= $(CURDIR)/dist
 
 inspect:
-	cargo run --manifest-path generator/Cargo.toml -- inspect $(PDF)
+	$(CABAL) run freeform-site -- inspect "$(CURDIR)"
 
 test:
-	cargo test --manifest-path generator/Cargo.toml
-	npm --prefix viewer test
-	npm --prefix viewer run build
+	$(CABAL) build all
+	$(CABAL) test all --test-show-details=direct
+	$(MAKE) inspect
+	$(MAKE) build
 
 build:
-	cargo run --manifest-path generator/Cargo.toml -- build $(PDF) $(DIST)
-	npm --prefix viewer run build -- --base ./
-	cp -R viewer/dist/. $(DIST)/
+	$(CABAL) run freeform-site -- build "$(CURDIR)" "$(DIST)"
+	$(MAKE) validate-dist
+
+evaluate:
+	$(CABAL) run freeform-site -- evaluate "$(CURDIR)" "$(DIST)"
 	$(MAKE) validate-dist
 
 validate-dist:
-	test -f $(DIST)/index.html
-	test -f $(DIST)/manifest.json
-	test -f $(DIST)/board.dzi
-	test -d $(DIST)/board_files
-	! grep -R 'src="/' $(DIST)/index.html
-	! grep -R 'href="/' $(DIST)/index.html
-	! grep -R 'notes.pdf' $(DIST)
-	! grep -R 'cdnjs.cloudflare.com' $(DIST)
+	test -f "$(DIST)/index.html"
+	test -f "$(DIST)/runtime.js"
+	test -f "$(DIST)/styles.css"
+	test -f "$(DIST)/scene.generated.js"
+	test -f "$(DIST)/scene-summary.json"
+	test -d "$(DIST)/assets"
+	test -n "$$(find "$(DIST)/assets" -type f -print -quit)"
+	test -z "$$(find "$(DIST)" -type f -name '*.pdf' -print -quit)"
+	! grep -R -E '(src|href)="/' "$(DIST)"
 
 serve: build
-	python3 -m http.server 8000 --directory $(DIST)
-
-fixtures:
-	./scripts/make-fixtures.sh
+	python3 -m http.server 8000 --directory "$(DIST)"

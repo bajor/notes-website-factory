@@ -1,0 +1,3 @@
+packages: generator
+
+tests: True
