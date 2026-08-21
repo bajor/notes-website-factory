@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="920" viewBox="0 0 1400 920" role="img" aria-labelledby="title description">
+  <title id="title">Vector-first Haskell software factory</title>
+  <desc id="description">The production flow classifies PDF image resources into traced SVG artwork, preserved raster screenshots, or explicit failures, then rejoins supported resources in source order before validation and static-site emission. A separate Poppler and Chromium loop compares output at 18 and 72 DPI.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#17213d"/>
+    </linearGradient>
+    <linearGradient id="vector" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16a6a1"/>
+      <stop offset="1" stop-color="#0b777f"/>
+    </linearGradient>
+    <linearGradient id="raster" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5b94c"/>
+      <stop offset="1" stop-color="#d9772e"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#92a4c8"/>
+    </marker>
+    <marker id="arrowTeal" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#43d5cf"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#ffc85c"/>
+    </marker>
+    <style>
+      .heading { font: 700 30px system-ui, sans-serif; fill: #f7f9ff; letter-spacing: .3px; }
+      .subheading { font: 500 15px system-ui, sans-serif; fill: #9fb0d2; }
+      .section { font: 700 13px system-ui, sans-serif; fill: #7589b1; letter-spacing: 2px; }
+      .label { font: 700 16px system-ui, sans-serif; fill: #f8faff; text-anchor: middle; }
+      .detail { font: 500 13px system-ui, sans-serif; fill: #cbd5eb; text-anchor: middle; }
+      .small { font: 600 12px system-ui, sans-serif; fill: #aebdde; text-anchor: middle; }
+      .box { fill: #202d4b; stroke: #50658f; stroke-width: 1.5; rx: 14; filter: url(#shadow); }
+      .flow { fill: none; stroke: #92a4c8; stroke-width: 2.5; marker-end: url(#arrow); }
+      .feedback { fill: none; stroke: #8c9dc0; stroke-width: 2; stroke-dasharray: 8 7; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1400" height="920" rx="28" fill="url(#background)"/>
+  <text x="70" y="64" class="heading">Vector-first Haskell software factory</text>
+  <text x="70" y="92" class="subheading">Production emits inline SVG artwork plus raster screenshots; evaluation artifacts never enter dist/.</text>
+
+  <text x="70" y="140" class="section">PRODUCTION PATH</text>
+
+  <rect x="70" y="170" width="180" height="88" class="box"/>
+  <text x="160" y="205" class="label">Algos.pdf</text>
+  <text x="160" y="230" class="detail">1 page, 44 images</text>
+
+  <path d="M250 214 H310" class="flow"/>
+
+  <rect x="310" y="170" width="200" height="88" class="box"/>
+  <text x="410" y="201" class="label">Factory.Pdf</text>
+  <text x="410" y="224" class="detail">pdf-toolbox decode</text>
+  <text x="410" y="244" class="detail">soft-mask evidence</text>
+
+  <path d="M510 214 H570" class="flow"/>
+
+  <rect x="570" y="158" width="230" height="112" class="box"/>
+  <text x="685" y="191" class="label">classifyImage</text>
+  <text x="685" y="216" class="detail">transparent fraction</text>
+  <text x="685" y="238" class="small" font-size="11">raster &lt;= .005 | fail &lt; .01 | vector</text>
+
+  <path d="M685 270 V320 H365 V350" fill="none" stroke="#43d5cf" stroke-width="3" marker-end="url(#arrowTeal)"/>
+  <path d="M685 270 V320 H685 V350" fill="none" stroke="#ffc85c" stroke-width="3" marker-end="url(#arrowAmber)"/>
+  <path d="M685 270 V320 H1005 V350" fill="none" stroke="#ff6b7a" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="235" y="350" width="260" height="116" rx="14" fill="url(#vector)" filter="url(#shadow)"/>
+  <text x="365" y="384" class="label">Factory.Vectorize</text>
+  <text x="365" y="409" class="detail">quantize, contour, simplify</text>
+  <text x="365" y="434" class="label">35 SVG artwork nodes</text>
+
+  <rect x="555" y="350" width="260" height="116" rx="14" fill="url(#raster)" filter="url(#shadow)"/>
+  <text x="685" y="384" class="label">Preserve pixels</text>
+  <text x="685" y="409" class="detail">screenshots and diagrams</text>
+  <text x="685" y="434" class="label">9 raster resources</text>
+
+  <rect x="875" y="350" width="260" height="116" rx="14" fill="#5a2636" stroke="#ff6b7a" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1005" y="384" class="label">Explicit failure</text>
+  <text x="1005" y="409" class="detail">ambiguous or unsupported</text>
+  <text x="1005" y="434" class="label">BuildError</text>
+
+  <path d="M365 466 V515 H570" fill="none" stroke="#43d5cf" stroke-width="3" marker-end="url(#arrowTeal)"/>
+  <path d="M685 466 V515 H630" fill="none" stroke="#ffc85c" stroke-width="3" marker-end="url(#arrowAmber)"/>
+
+  <rect x="570" y="486" width="250" height="94" class="box"/>
+  <text x="695" y="519" class="label">Factory.Interpreter</text>
+  <text x="695" y="544" class="detail">mixed nodes in PDF order</text>
+  <text x="695" y="564" class="small">Scene 'Unvalidated</text>
+
+  <path d="M820 533 H875" class="flow"/>
+
+  <rect x="875" y="486" width="210" height="94" class="box"/>
+  <text x="980" y="519" class="label">Factory.Site</text>
+  <text x="980" y="544" class="detail">validate + emit</text>
+  <text x="980" y="564" class="small">9 referenced assets only</text>
+
+  <path d="M1085 533 H1140" class="flow"/>
+
+  <rect x="1140" y="486" width="190" height="94" class="box"/>
+  <text x="1235" y="519" class="label">Static site</text>
+  <text x="1235" y="544" class="detail">inline SVG + DOM</text>
+  <text x="1235" y="564" class="small">GitHub Pages</text>
+
+  <line x1="70" y1="630" x2="1330" y2="630" stroke="#354464" stroke-width="1"/>
+  <text x="70" y="675" class="section">INDEPENDENT EVALUATION LOOP</text>
+
+  <rect x="70" y="710" width="230" height="104" class="box"/>
+  <text x="185" y="744" class="label">Poppler oracle</text>
+  <text x="185" y="769" class="detail">source PDF reference</text>
+  <text x="185" y="793" class="label">18 + 72 DPI</text>
+
+  <rect x="390" y="710" width="230" height="104" class="box"/>
+  <text x="505" y="744" class="label">Chromium</text>
+  <text x="505" y="769" class="detail">generated site screenshot</text>
+  <text x="505" y="793" class="label">data-ready=true</text>
+
+  <path d="M300 742 V692 H650 V735 H685" class="flow"/>
+  <path d="M620 782 H685" class="flow"/>
+
+  <rect x="685" y="698" width="280" height="128" class="box"/>
+  <text x="825" y="735" class="label">Factory.Evaluation</text>
+  <text x="825" y="760" class="detail">error, tolerance, ink</text>
+  <text x="825" y="784" class="detail">amplified difference images</text>
+  <text x="825" y="807" class="label">report.html</text>
+
+  <path d="M965 762 H1040" class="flow"/>
+
+  <rect x="1040" y="710" width="290" height="104" class="box"/>
+  <text x="1185" y="744" class="label">Evidence-driven revision</text>
+  <text x="1185" y="769" class="detail">smallest parser or tracer change</text>
+  <text x="1185" y="793" class="small">thresholds remain unchanged</text>
+
+  <path d="M1185 710 V660 H410 V270" class="feedback"/>
+
+  <text x="70" y="878" class="subheading">Review: verify 35 vector / 9 raster output, source-order reunion, explicit ambiguity failure, and separation of production from evaluation.</text>
+</svg>

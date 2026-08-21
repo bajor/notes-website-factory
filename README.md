@@ -4,7 +4,7 @@ This repository is a small Haskell software factory. It reads the repository's o
 
 The project has two products:
 
-- `dist/`, a browser-ready site made from JavaScript, DOM elements, Canvas paths, and extracted image assets;
+- `dist/`, a browser-ready site made from JavaScript, inline SVG artwork, DOM overlays, and extracted raster assets;
 - a readable example of functional programming, typed boundaries, and evidence-driven parser development.
 
 The deployed browser never downloads or parses the PDF. Poppler is used only as a development oracle for visual comparison, not as the production renderer.
@@ -54,16 +54,17 @@ Open `http://localhost:8000`. `make serve` builds `dist/` before starting the lo
 1. Start with `generator/src/Factory/Domain.hs`. Domain types name coordinates, assets, links, scene nodes, and failures. The `Scene` phase parameter distinguishes `Scene 'Unvalidated` from `Scene 'Validated`.
 2. Read `generator/src/Factory/Geometry.hs`. Every function is pure: the same matrix and point always produce the same result.
 3. Read `generator/src/Factory/Interpreter.hs`. `foldM` implements an immutable state machine. Each PDF operator receives the old machine and returns either a typed error or a new machine.
-4. Read `generator/src/Factory/Pdf.hs`. This is the PDF effect boundary. `pdf-toolbox` reads objects and streams; this module converts them into the project's domain.
-5. Read `generator/src/Factory/Site.hs`. Validation changes the scene's type before JavaScript can be emitted.
-6. Read `generator/src/Factory/Pipeline.hs`. This is the imperative shell that discovers files, stages output, and connects the pure stages.
-7. Read `generator/src/Factory/Evaluation.hs`. The parser's output is compared with a mature renderer so that visual errors become measurable evidence.
+4. Read `generator/src/Factory/Vectorize.hs`. It classifies embedded images and traces eligible Freeform artwork into deterministic SVG contours.
+5. Read `generator/src/Factory/Pdf.hs`. This is the PDF effect boundary. `pdf-toolbox` reads objects and streams; this module converts them into the project's domain.
+6. Read `generator/src/Factory/Site.hs`. Validation changes the scene's type before JavaScript can be emitted.
+7. Read `generator/src/Factory/Pipeline.hs`. This is the imperative shell that discovers files, stages output, and connects the pure stages.
+8. Read `generator/src/Factory/Evaluation.hs`. The parser's output is compared with a mature renderer at two resolutions so that visual errors become measurable evidence.
 
 ## Functional Programming Ideas
 
 ### Pure Core, Effectful Shell
 
-Geometry, operator interpretation, URL classification, and scene validation do not choose files or mutate global state. File and process operations stay at the edges in `Factory.Pdf`, `Factory.Site`, `Factory.Evaluation`, and `Factory.Pipeline`.
+Geometry, operator interpretation, image classification, contour tracing, URL classification, and scene validation do not choose files or mutate global state. File and process operations stay at the edges in `Factory.Pdf`, `Factory.Site`, `Factory.Evaluation`, and `Factory.Pipeline`.
 
 This separation makes failures reproducible. A failing operator list can be passed directly to `interpretOperators` without opening a PDF or browser.
 
@@ -97,7 +98,7 @@ Treat parser work as a measured loop rather than a one-shot generation prompt:
 3. Add one focused unit test for that transition.
 4. Run `make test` to prove compilation, unit behavior, real-PDF parsing, and deployable output.
 5. Run `make evaluate` to compare the generated browser scene with Poppler's reference.
-6. Inspect `build/evaluation/report.html` and the amplified difference image.
+6. Inspect `build/evaluation/report.html` and both amplified difference images.
 7. Repeat only where the evidence shows a gap.
 
 The evaluator currently requires all of these conditions:
@@ -107,6 +108,8 @@ The evaluator currently requires all of these conditions:
 - generated/reference ink ratio from `0.85` through `1.15`;
 - a browser DOM marked `data-ready="true"` after all image and font loads finish.
 
+Each condition must pass at 18 DPI for the whole-board view and at 72 DPI for native PDF-point-scale detail.
+
 ## Input Contract
 
 The repository must contain exactly one non-symlink PDF file, and that PDF must contain exactly one page. `Algos.pdf` is the current source.
@@ -115,6 +118,7 @@ The current implementation intentionally targets the observed Apple Freeform exp
 
 - unrotated page with matching zero-origin MediaBox and CropBox;
 - JPEG and 8-bit Flate image XObjects, including Flate soft masks;
+- evidence-based image classification that preserves opaque and near-opaque screenshots as raster, traces substantially transparent Freeform artwork as SVG, and rejects ambiguous masks;
 - axis-aligned image transforms;
 - clipping paths, common color operators, and Freeform's opacity resources;
 - HTTP and HTTPS URI annotations, including YouTube watch, short, and embed URLs;
@@ -136,7 +140,11 @@ dist/
 `-- styles.css
 ```
 
-The output contains no PDF, OCR result, SVG rendering, full-page screenshot, Rust bundle, TypeScript bundle, Node dependency, or server component. All references are relative so the site works under the GitHub Pages project path.
+For the current `Algos.pdf`, the validated scene contains 35 inline SVG artwork nodes and 9 raster image nodes backed by exactly 9 files under `dist/assets/`. The output contains no PDF, OCR result, full-page screenshot, Rust bundle, TypeScript bundle, Node dependency, browser PDF parser, or server component. All references are relative so the site works under the GitHub Pages project path.
+
+## Documentation
+
+[`docs/index.md`](docs/index.md) indexes the architecture, observed PDF profile, requirements, decisions, behavior records, and implementation issues. Keep those records synchronized with structural or behavioral changes according to the strict living-docs policy in `AGENTS.md`.
 
 ## Deployment
 
@@ -152,4 +160,4 @@ https://bajor.github.io/algos-for-slow-learners/
 
 ## Acceptance Criteria
 
-Work is complete when `make test` and `make evaluate` pass, `dist/` contains no PDF, the desktop and mobile browser interactions work, the evaluation report records a passing result, and the generated site can be deployed without Rust, Node, Poppler, Chromium, or Haskell at runtime.
+Work is complete when `make test` and `make evaluate` pass, `dist/` contains the required mixed SVG/raster scene and no PDF, desktop and mobile browser interactions work, both evaluation resolutions pass, and the generated site can be deployed without Rust, Node, Poppler, Chromium, or Haskell at runtime.

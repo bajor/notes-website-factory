@@ -3,20 +3,23 @@
 
 module Main (main) where
 
-import Codec.Picture (Image, PixelRGB8 (PixelRGB8), generateImage)
+import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage)
 import Factory.Domain
 import Factory.Evaluation (EvaluationResult (evaluationPassed), calculateDifference)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
-import Factory.Interpreter (Resources (Resources), interpretOperators)
+import Factory.Interpreter (Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (rejectDecode, rgbaImage)
 import Factory.Site (validateScene)
+import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
+import qualified Data.ByteString as ByteString
 import qualified Data.Map.Strict as Map
 import qualified Data.Scientific as Scientific
+import qualified Data.Text as Text
 
 main :: IO ()
 main = defaultMain tests
@@ -28,6 +31,7 @@ tests =
     [ geometryTests
     , interpreterTests
     , imageTests
+    , vectorizationTests
     , validationTests
     , evaluationTests
     , pipelineTests
@@ -52,6 +56,12 @@ interpreterTests =
     [ testCase "image operators emit a board-space image node" $
         interpretOperators pageHeight imageResources [operator Op_cm [2, 0, 0, 3, 10, 20], (Op_Do, [Name "Im1"])]
           @?= Right [ImageNode (AssetId "asset-1") (Matrix 2 0 0 (-3) 10 80) 1 []]
+    , testCase "mixed image operators preserve source order" $
+        interpretOperators pageHeight mixedResources [(Op_Do, [Name "Raster"]), (Op_Do, [Name "Vector"])]
+          @?= Right
+            [ ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
+            , VectorArtworkNode [testVectorShape] (Matrix 1 0 0 (-1) 0 100) 1 []
+            ]
     , testCase "a closed subpath remains the current point" $
         case interpretOperators pageHeight emptyResources closedCurveOperators of
           Right [PathNode commands _ _] -> commandAt 3 commands @?= Just (CurveTo (Point 10 90) (Point 30 80) (Point 40 60))
@@ -74,6 +84,29 @@ imageTests =
           @?= Left (UnsupportedImage "image Decode arrays are not supported")
     ]
 
+vectorizationTests :: TestTree
+vectorizationTests =
+  testGroup
+    "vectorization"
+    [ testCase "opaque images remain raster" $
+        classifyImage Nothing @?= Right PreserveRaster
+    , testCase "rounded screenshots with nearly opaque masks remain raster" $
+        classifyImage (Just (ByteString.pack (0 : replicate 999 255))) @?= Right PreserveRaster
+    , testCase "transparent soft masks become vector artwork" $
+        classifyImage (Just "\NUL\255\255\255") @?= Right TraceAsVector
+    , testCase "ambiguous soft masks fail classification" $
+        classifyImage (Just (ByteString.pack (replicate 6 254 <> replicate 994 255)))
+          @?= Left (UnsupportedImage "soft-masked image is too opaque to classify safely")
+    , testCase "a filled rectangle produces one closed vector path" $
+        case traceImage solidVectorImage of
+          Right [shape] -> unVectorPath (vectorPath shape) @?= "M0,0L1,0L1,1L0,1Z"
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "transparent holes remain separate closed contours" $
+        case traceImage vectorImageWithHole of
+          Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    ]
+
 validationTests :: TestTree
 validationTests =
   testGroup
@@ -84,6 +117,13 @@ validationTests =
     , testCase "a clip cannot hide a full-board raster image" $
         validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 100 0 0 100 0 0) 1 [fullPageClip]])
           @?= Left (InvalidScene "a full-board raster image is not allowed")
+    , testCase "unreferenced raster assets are rejected" $
+        validateScene (sceneWith [testAsset] [])
+          @?= Left (InvalidScene "scene contains an unreferenced asset")
+    , testCase "vector-only scenes are valid" $
+        case validateScene (sceneWith [] [VectorArtworkNode [testVectorShape] identityMatrix 1 []]) of
+          Right _ -> pure ()
+          Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
     ]
 
 evaluationTests :: TestTree
@@ -116,7 +156,20 @@ emptyResources :: Resources
 emptyResources = Resources Map.empty Map.empty
 
 imageResources :: Resources
-imageResources = Resources (Map.singleton "Im1" (AssetId "asset-1")) Map.empty
+imageResources = Resources (Map.singleton "Im1" (RasterResource (AssetId "asset-1"))) Map.empty
+
+mixedResources :: Resources
+mixedResources =
+  Resources
+    ( Map.fromList
+        [ ("Raster", RasterResource (AssetId "asset-1"))
+        , ("Vector", VectorResource [testVectorShape])
+        ]
+    )
+    Map.empty
+
+testVectorShape :: VectorShape
+testVectorShape = VectorShape (VectorPath "M0,0L1,0L1,1Z") (Color 0 0 0) 1
 
 operator :: Op -> [Double] -> Operator
 operator name values = (name, map (Number . Scientific.fromFloatDigits) values)
@@ -160,3 +213,12 @@ sparseReference = generateImage pixel 100 100
 
 blankImage :: Image PixelRGB8
 blankImage = generateImage (\_ _ -> PixelRGB8 255 255 255) 100 100
+
+solidVectorImage :: Image PixelRGBA8
+solidVectorImage = generateImage (\_ _ -> PixelRGBA8 0 0 0 255) 2 2
+
+vectorImageWithHole :: Image PixelRGBA8
+vectorImageWithHole = generateImage pixel 3 3
+  where
+    pixel 1 1 = PixelRGBA8 0 0 0 0
+    pixel _ _ = PixelRGBA8 0 0 0 255

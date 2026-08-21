@@ -7,6 +7,7 @@
 -- state. Nothing is changed in place, which makes every transition testable.
 module Factory.Interpreter
   ( Resources (..)
+  , VisualResource (..)
   , interpretOperators
   ) where
 
@@ -24,9 +25,14 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TextEncoding
 
 data Resources = Resources
-  { resourceImages :: Map Name AssetId
+  { resourceImages :: Map Name VisualResource
   , resourceAlpha :: Map Name Double
   }
+  deriving stock (Eq, Show)
+
+data VisualResource
+  = RasterResource AssetId
+  | VectorResource [VectorShape]
   deriving stock (Eq, Show)
 
 data GraphicsState = GraphicsState
@@ -222,9 +228,14 @@ currentPathPoint machine = case reverse (machinePath machine) of
 emitImage :: Coordinate PdfSpace -> Resources -> Machine -> Object -> Either BuildError Machine
 emitImage height resources machine value = do
   name <- maybe (Left (PdfStructureError "Do expected an image resource name")) Right (nameValue value)
-  identifier <- maybe (Left (PdfStructureError ("missing image resource " <> nameText name))) Right (Map.lookup name (resourceImages resources))
+  resource <- maybe (Left (PdfStructureError ("missing image resource " <> nameText name))) Right (Map.lookup name (resourceImages resources))
   let graphics = machineGraphics machine
-      node = ImageNode identifier (boardMatrix height (currentMatrix graphics)) (currentOpacity graphics) (currentClips graphics)
+      matrix = boardMatrix height (currentMatrix graphics)
+      opacity = currentOpacity graphics
+      clips = currentClips graphics
+      node = case resource of
+        RasterResource identifier -> ImageNode identifier matrix opacity clips
+        VectorResource shapes -> VectorArtworkNode shapes matrix opacity clips
   Right machine {machineNodes = node : machineNodes machine}
 
 setAlpha :: Resources -> Machine -> Object -> Either BuildError Machine

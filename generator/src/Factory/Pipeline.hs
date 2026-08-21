@@ -222,6 +222,8 @@ summaryText pdf summary =
     , "Board: " <> decimalText (summaryWidth summary) <> " x " <> decimalText (summaryHeight summary) <> " pt"
     , "Operators: " <> numberText (summaryOperatorCount summary)
     , "Images: " <> numberText (summaryImageCount summary)
+    , "Vector artworks: " <> numberText (summaryVectorCount summary)
+    , "Raster images: " <> numberText (summaryRasterCount summary)
     , "Links: " <> numberText (summaryLinkCount summary)
     ]
 

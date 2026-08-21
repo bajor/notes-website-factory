@@ -29,6 +29,8 @@ module Factory.Domain
   , SceneNode (..)
   , TextRun (..)
   , Validation (..)
+  , VectorPath (..)
+  , VectorShape (..)
   , VideoId (..)
   , WebUrl (..)
   , sceneNodes
@@ -136,8 +138,19 @@ data TextRun = TextRun
   }
   deriving stock (Eq, Show)
 
+newtype VectorPath = VectorPath {unVectorPath :: Text}
+  deriving stock (Eq, Show)
+
+data VectorShape = VectorShape
+  { vectorPath :: VectorPath
+  , vectorColor :: Color
+  , vectorOpacity :: Double
+  }
+  deriving stock (Eq, Show)
+
 data SceneNode
   = ImageNode AssetId Matrix Double [ClipPath]
+  | VectorArtworkNode [VectorShape] Matrix Double [ClipPath]
   | PathNode [PathCommand] PaintStyle [ClipPath]
   | TextNode TextRun [ClipPath]
   | LinkNode LinkTarget (Rect BoardSpace)
@@ -229,12 +242,28 @@ instance ToJSON PaintStyle where
           , "rule" .= case rule of NonZero -> ("nonzero" :: Text); EvenOdd -> "evenodd"
           ]
 
+instance ToJSON VectorShape where
+  toJSON shape =
+    object
+      [ "path" .= unVectorPath (vectorPath shape)
+      , "color" .= vectorColor shape
+      , "opacity" .= vectorOpacity shape
+      ]
+
 instance ToJSON SceneNode where
   toJSON node = case node of
     ImageNode identifier matrix opacity clips ->
       object
         [ "kind" .= ("image" :: Text)
         , "asset" .= unAssetId identifier
+        , "matrix" .= matrix
+        , "opacity" .= opacity
+        , "clips" .= clips
+        ]
+    VectorArtworkNode shapes matrix opacity clips ->
+      object
+        [ "kind" .= ("vector-artwork" :: Text)
+        , "shapes" .= shapes
         , "matrix" .= matrix
         , "opacity" .= opacity
         , "clips" .= clips

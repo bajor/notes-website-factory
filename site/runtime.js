@@ -3,12 +3,17 @@ import { scene } from './scene.generated.js';
 const viewport = document.querySelector('#viewport');
 const board = document.querySelector('#board');
 const status = document.querySelector('#status');
-const evaluationMode = new URLSearchParams(window.location.search).has('evaluation');
+const evaluationDpi = Number(new URLSearchParams(window.location.search).get('evaluation'));
+const evaluationMode = Number.isFinite(evaluationDpi) && evaluationDpi > 0;
+const svgNamespace = 'http://www.w3.org/2000/svg';
 
 const view = { scale: 1, x: 0, y: 0 };
 const pointers = new Map();
 let dragStart = null;
 let pinchStart = null;
+let sceneSvg;
+let clipDefinitions;
+let clipSequence = 0;
 
 void initialize();
 
@@ -16,9 +21,9 @@ async function initialize() {
   try {
     if (evaluationMode) {
       document.querySelector('#controls').hidden = true;
-      // The evaluator renders its PDF oracle at 18 DPI. PDF coordinates use
-      // 72 points per inch, so 18 / 72 gives the matching browser scale.
-      view.scale = 0.25;
+      // PDF coordinates use 72 points per inch, so DPI / 72 gives the
+      // matching browser scale for each evaluation resolution.
+      view.scale = evaluationDpi / 72;
       applyView();
     } else {
       installControls();
@@ -38,72 +43,90 @@ async function initialize() {
 async function buildScene() {
   board.style.width = `${scene.width}px`;
   board.style.height = `${scene.height}px`;
+  sceneSvg = createSvgElement('svg');
+  sceneSvg.classList.add('scene-svg');
+  sceneSvg.setAttribute('viewBox', `0 0 ${scene.width} ${scene.height}`);
+  sceneSvg.setAttribute('aria-hidden', 'true');
+  clipDefinitions = createSvgElement('defs');
+  sceneSvg.append(clipDefinitions);
+  board.append(sceneSvg);
 
   const assets = new Map(scene.assets.map((asset) => [asset.id, asset]));
   const imageLoads = [];
 
   for (const node of scene.nodes) {
     if (node.kind === 'image') imageLoads.push(addImage(node, assets));
+    if (node.kind === 'vector-artwork') addVectorArtwork(node);
     if (node.kind === 'path') addPath(node);
     if (node.kind === 'text') addText(node);
     if (node.kind === 'link') addLink(node);
   }
 
   await Promise.all(imageLoads);
+  document.body.dataset.vectorArtworks = scene.nodes.filter((node) => node.kind === 'vector-artwork').length;
+  document.body.dataset.rasterImages = scene.nodes.filter((node) => node.kind === 'image').length;
 }
 
 function addImage(node, assets) {
   const asset = assets.get(node.asset);
   if (!asset) throw new Error(`Missing generated asset ${node.asset}`);
 
-  const image = document.createElement('img');
-  image.className = 'scene-image';
-  image.src = asset.file;
-  image.alt = '';
-  image.draggable = false;
-  image.style.opacity = node.opacity;
+  const image = createSvgElement('image');
+  image.classList.add('scene-image');
   const bounds = transformedUnitBounds(node.matrix);
-  image.style.left = `${bounds.x}px`;
-  image.style.top = `${bounds.y}px`;
-  image.style.width = `${bounds.width}px`;
-  image.style.height = `${bounds.height}px`;
-  image.style.transformOrigin = 'center';
-  image.style.transform = `scale(${Math.sign(node.matrix.a)}, ${-Math.sign(node.matrix.d)})`;
-  appendWithClips(image, node.clips);
-
-  return new Promise((resolve, reject) => {
+  image.setAttribute('x', bounds.x);
+  image.setAttribute('y', bounds.y);
+  image.setAttribute('width', bounds.width);
+  image.setAttribute('height', bounds.height);
+  image.setAttribute('opacity', node.opacity);
+  image.setAttribute('preserveAspectRatio', 'none');
+  image.setAttribute('transform', centeredFlip(bounds, Math.sign(node.matrix.a), -Math.sign(node.matrix.d)));
+  const loaded = new Promise((resolve, reject) => {
     image.addEventListener('load', resolve, { once: true });
     image.addEventListener('error', () => reject(new Error(`Could not load ${asset.file}`)), { once: true });
   });
+  image.setAttribute('href', asset.file);
+  appendVisual(image, node.clips);
+  return loaded;
+}
+
+function addVectorArtwork(node) {
+  const bounds = transformedUnitBounds(node.matrix);
+  const group = createSvgElement('g');
+  const horizontalScale = Math.sign(node.matrix.a) * bounds.width;
+  const verticalScale = -Math.sign(node.matrix.d) * bounds.height;
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  group.classList.add('scene-vector-artwork');
+  group.setAttribute('opacity', node.opacity);
+  group.setAttribute('transform', `translate(${centerX} ${centerY}) scale(${horizontalScale} ${verticalScale}) translate(-0.5 -0.5)`);
+  for (const shape of node.shapes) {
+    const path = createSvgElement('path');
+    path.setAttribute('d', shape.path);
+    path.setAttribute('fill', cssColor(shape.color));
+    path.setAttribute('fill-opacity', shape.opacity);
+    path.setAttribute('fill-rule', 'evenodd');
+    group.append(path);
+  }
+  appendVisual(group, node.clips);
 }
 
 function addPath(node) {
-  const bounds = pathBounds(node.commands, node.style.lineWidth);
-  if (!bounds) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.className = 'scene-path';
-  canvas.width = Math.max(1, Math.ceil(bounds.width));
-  canvas.height = Math.max(1, Math.ceil(bounds.height));
-  canvas.style.left = `${bounds.x}px`;
-  canvas.style.top = `${bounds.y}px`;
-  canvas.style.width = `${bounds.width}px`;
-  canvas.style.height = `${bounds.height}px`;
-
-  const context = canvas.getContext('2d');
-  context.translate(-bounds.x, -bounds.y);
-  context.globalAlpha = node.style.opacity;
-  tracePath(context, node.commands);
+  const path = createSvgElement('path');
+  path.classList.add('scene-path');
+  path.setAttribute('d', pathData(node.commands));
+  path.setAttribute('opacity', node.style.opacity);
   if (node.style.fill) {
-    context.fillStyle = cssColor(node.style.fill.color);
-    context.fill(node.style.fill.rule);
+    path.setAttribute('fill', cssColor(node.style.fill.color));
+    path.setAttribute('fill-rule', node.style.fill.rule);
+  } else {
+    path.setAttribute('fill', 'none');
   }
   if (node.style.stroke) {
-    context.strokeStyle = cssColor(node.style.stroke);
-    context.lineWidth = node.style.lineWidth;
-    context.stroke();
+    path.setAttribute('stroke', cssColor(node.style.stroke));
+    path.setAttribute('stroke-width', node.style.lineWidth);
   }
-  appendWithClips(canvas, node.clips);
+  appendVisual(path, node.clips);
 }
 
 function addText(node) {
@@ -114,7 +137,7 @@ function addText(node) {
   text.style.fontSize = `${node.fontSize}px`;
   text.style.opacity = node.opacity;
   text.style.transform = cssMatrix(node.matrix);
-  appendWithClips(text, node.clips);
+  appendHtmlWithClips(text, node.clips);
 }
 
 function addLink(node) {
@@ -152,7 +175,28 @@ function positionLink(element, bounds) {
   element.style.height = `${bounds.height}px`;
 }
 
-function appendWithClips(element, clips) {
+function appendVisual(element, clips) {
+  let child = element;
+  for (const clip of [...clips].reverse()) {
+    const wrapper = createSvgElement('g');
+    const identifier = `clip-${clipSequence++}`;
+    const clipPath = createSvgElement('clipPath');
+    const path = createSvgElement('path');
+    clipPath.id = identifier;
+    clipPath.setAttribute('clipPathUnits', 'userSpaceOnUse');
+    path.setAttribute('d', pathData(clip.commands));
+    path.setAttribute('clip-rule', clip.rule);
+    path.setAttribute('fill-rule', clip.rule);
+    clipPath.append(path);
+    clipDefinitions.append(clipPath);
+    wrapper.setAttribute('clip-path', `url(#${identifier})`);
+    wrapper.append(child);
+    child = wrapper;
+  }
+  sceneSvg.append(child);
+}
+
+function appendHtmlWithClips(element, clips) {
   let child = element;
   for (const clip of [...clips].reverse()) {
     const wrapper = document.createElement('div');
@@ -163,6 +207,16 @@ function appendWithClips(element, clips) {
     child = wrapper;
   }
   board.append(child);
+}
+
+function createSvgElement(name) {
+  return document.createElementNS(svgNamespace, name);
+}
+
+function centeredFlip(bounds, horizontal, vertical) {
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  return `translate(${centerX} ${centerY}) scale(${horizontal} ${vertical}) translate(${-centerX} ${-centerY})`;
 }
 
 function installControls() {
@@ -302,16 +356,6 @@ function cssColor(color) {
   return `rgb(${color.r * 255} ${color.g * 255} ${color.b * 255})`;
 }
 
-function tracePath(context, commands) {
-  context.beginPath();
-  for (const command of commands) {
-    if (command.kind === 'move') context.moveTo(command.point.x, command.point.y);
-    if (command.kind === 'line') context.lineTo(command.point.x, command.point.y);
-    if (command.kind === 'curve') context.bezierCurveTo(command.first.x, command.first.y, command.second.x, command.second.y, command.end.x, command.end.y);
-    if (command.kind === 'close') context.closePath();
-  }
-}
-
 function pathData(commands) {
   return commands.map((command) => {
     if (command.kind === 'move') return `M ${command.point.x} ${command.point.y}`;
@@ -319,14 +363,4 @@ function pathData(commands) {
     if (command.kind === 'curve') return `C ${command.first.x} ${command.first.y} ${command.second.x} ${command.second.y} ${command.end.x} ${command.end.y}`;
     return 'Z';
   }).join(' ');
-}
-
-function pathBounds(commands, padding) {
-  const points = commands.flatMap((command) => [command.point, command.first, command.second, command.end].filter(Boolean));
-  if (points.length === 0) return null;
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const left = Math.min(...xs) - padding;
-  const top = Math.min(...ys) - padding;
-  return { x: left, y: top, width: Math.max(...xs) - left + padding, height: Math.max(...ys) - top + padding };
 }
