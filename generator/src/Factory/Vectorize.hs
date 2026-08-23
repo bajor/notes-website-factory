@@ -35,10 +35,10 @@ data Edge = Edge GridPoint GridPoint
   deriving stock (Eq, Ord, Show)
 
 minimumTransparentFraction :: Double
-minimumTransparentFraction = 0.01
+minimumTransparentFraction = 0.02
 
 maximumRasterTransparency :: Double
-maximumRasterTransparency = 0.005
+maximumRasterTransparency = 0.01
 
 minimumVisibleAlpha :: Word8
 minimumVisibleAlpha = 96

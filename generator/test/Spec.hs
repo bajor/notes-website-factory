@@ -4,12 +4,13 @@
 module Main (main) where
 
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage)
+import Data.Aeson (Value (Object, String), toJSON)
 import Factory.Domain
 import Factory.Evaluation (EvaluationResult (evaluationPassed), calculateDifference)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
 import Factory.Interpreter (Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
-import Factory.Pdf (rejectDecode, rgbaImage)
+import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
 import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
 import Pdf.Content (Op (..), Operator)
@@ -17,6 +18,7 @@ import Pdf.Core (Object (Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
 import qualified Data.ByteString as ByteString
+import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Map.Strict as Map
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as Text
@@ -32,6 +34,7 @@ tests =
     , interpreterTests
     , imageTests
     , vectorizationTests
+    , linkTests
     , validationTests
     , siteTests
     , evaluationTests
@@ -93,11 +96,15 @@ vectorizationTests =
         classifyImage Nothing @?= Right PreserveRaster
     , testCase "rounded screenshots with nearly opaque masks remain raster" $
         classifyImage (Just (ByteString.pack (0 : replicate 999 255))) @?= Right PreserveRaster
-    , testCase "transparent soft masks become vector artwork" $
-        classifyImage (Just "\NUL\255\255\255") @?= Right TraceAsVector
+    , testCase "linked cards with less than one percent transparency remain raster" $
+        classifyImage (Just (ByteString.pack (replicate 8 0 <> replicate 992 255))) @?= Right PreserveRaster
+    , testCase "one percent transparency remains raster" $
+        classifyImage (Just (ByteString.pack (replicate 10 0 <> replicate 990 255))) @?= Right PreserveRaster
     , testCase "ambiguous soft masks fail classification" $
-        classifyImage (Just (ByteString.pack (replicate 6 254 <> replicate 994 255)))
+        classifyImage (Just (ByteString.pack (replicate 15 0 <> replicate 985 255)))
           @?= Left (UnsupportedImage "soft-masked image is too opaque to classify safely")
+    , testCase "two percent transparency becomes vector artwork" $
+        classifyImage (Just (ByteString.pack (replicate 20 0 <> replicate 980 255))) @?= Right TraceAsVector
     , testCase "a filled rectangle produces one closed vector path" $
         case traceImage solidVectorImage of
           Right [shape] -> unVectorPath (vectorPath shape) @?= "M0,0L1,0L1,1L0,1Z"
@@ -106,6 +113,40 @@ vectorizationTests =
         case traceImage vectorImageWithHole of
           Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
           result -> assertFailure ("unexpected trace result: " <> show result)
+    ]
+
+linkTests :: TestTree
+linkTests =
+  testGroup
+    "link classification"
+    [ testCase "Algo Arcade game routes receive a game target" $
+        classifyUrl gameUrl @?= Right (Game (GameUrl gameUrl))
+    , testCase "Algo Arcade host matching is case insensitive" $
+        classifyUrl "https://BAJOR.GITHUB.IO/algo-arcade/#/games/example-game"
+          @?= Right (Game (GameUrl "https://BAJOR.GITHUB.IO/algo-arcade/#/games/example-game"))
+    , testCase "HTTP game routes remain external links" $
+        classifyUrl "http://bajor.github.io/algo-arcade/#/games/example-game"
+          @?= Right (External (WebUrl "http://bajor.github.io/algo-arcade/#/games/example-game"))
+    , testCase "game routes with credentials remain external links" $
+        classifyUrl "https://user@bajor.github.io/algo-arcade/#/games/example-game"
+          @?= Right (External (WebUrl "https://user@bajor.github.io/algo-arcade/#/games/example-game"))
+    , testCase "game routes with explicit ports remain external links" $
+        classifyUrl "https://bajor.github.io:443/algo-arcade/#/games/example-game"
+          @?= Right (External (WebUrl "https://bajor.github.io:443/algo-arcade/#/games/example-game"))
+    , testCase "other paths remain external links" $
+        classifyUrl "https://bajor.github.io/other/#/games/example-game"
+          @?= Right (External (WebUrl "https://bajor.github.io/other/#/games/example-game"))
+    , testCase "non-game pages remain external links" $
+        classifyUrl "https://bajor.github.io/algo-arcade/" @?= Right (External (WebUrl "https://bajor.github.io/algo-arcade/"))
+    , testCase "lookalike game hosts remain external links" $
+        classifyUrl "https://bajor.github.io.evil.example/algo-arcade/#/games/example"
+          @?= Right (External (WebUrl "https://bajor.github.io.evil.example/algo-arcade/#/games/example"))
+    , testCase "game targets serialize with their distinct kind" $
+        case toJSON (LinkNode (Game (GameUrl gameUrl)) (Rect 1 2 3 4)) of
+          Object node -> case KeyMap.lookup "target" node of
+            Just (Object target) -> KeyMap.lookup "kind" target @?= Just (String "game")
+            value -> assertFailure ("unexpected target JSON: " <> show value)
+          value -> assertFailure ("unexpected link JSON: " <> show value)
     ]
 
 validationTests :: TestTree
@@ -179,6 +220,9 @@ pipelineTests =
 
 pageHeight :: Coordinate PdfSpace
 pageHeight = Coordinate 100
+
+gameUrl :: Text.Text
+gameUrl = "https://bajor.github.io/algo-arcade/#/games/example-game"
 
 emptyResources :: Resources
 emptyResources = Resources Map.empty Map.empty

@@ -58,7 +58,8 @@ test-suite freeform-site-test
   default-language: GHC2021
   ghc-options:      -Wall -Wcompat -Werror
   build-depends:
-      base >=4.18 && <4.19
+      aeson
+    , base >=4.18 && <4.19
     , bytestring
     , containers
     , freeform-site
