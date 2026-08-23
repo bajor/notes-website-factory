@@ -36,6 +36,7 @@ import System.Directory
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.FilePath (dropTrailingPathSeparator, isAbsolute, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, takeFileName, (</>))
+import System.IO.Error (isDoesNotExistError)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 
@@ -43,10 +44,12 @@ runCommand :: IO ()
 runCommand = do
   arguments <- getArgs
   result <- case arguments of
-    ["inspect", repositoryRoot] -> inspectRepository repositoryRoot
-    ["build", repositoryRoot, outputDirectory] -> buildRepository repositoryRoot outputDirectory
-    ["evaluate", repositoryRoot, outputDirectory] -> evaluateRepository repositoryRoot outputDirectory
-    _ -> pure (Left (IoError "usage: freeform-site inspect ROOT | build ROOT DIST | evaluate ROOT DIST"))
+    ["inspect", sourceRoot, workDirectory] -> inspectRepository sourceRoot workDirectory
+    ["build", sourceRoot, templateDirectory, outputDirectory, rawTitle] ->
+      withSiteTitle rawTitle (buildRepository sourceRoot templateDirectory outputDirectory)
+    ["evaluate", sourceRoot, templateDirectory, outputDirectory, reportDirectory, rawTitle] ->
+      withSiteTitle rawTitle (evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory)
+    _ -> pure (Left (IoError "usage: freeform-site inspect SOURCE WORK | build SOURCE TEMPLATES DIST TITLE | evaluate SOURCE TEMPLATES DIST REPORT TITLE"))
   case result of
     Left buildError -> Text.putStrLn ("ERROR: " <> renderError buildError) >> exitFailure
     Right message -> Text.putStrLn message
@@ -59,32 +62,35 @@ discoverSinglePdf repositoryRoot = do
     Right [pdf] -> Right pdf
     Right pdfs -> Left (PdfCountError (length pdfs))
 
-inspectRepository :: FilePath -> IO (Either BuildError Text)
-inspectRepository repositoryRoot = do
-  absoluteRoot <- makeAbsolute repositoryRoot
-  withSinglePdf absoluteRoot $ \pdf -> do
-    let scratch = absoluteRoot </> "build" </> "inspect-assets"
-    resetDirectory scratch
-    parsed <- parsePdf pdf scratch
-    removePathForcibly scratch
-    pure $ do
-      (_, summary) <- parsed
-      Right (summaryText pdf summary)
+inspectRepository :: FilePath -> FilePath -> IO (Either BuildError Text)
+inspectRepository sourceRoot workDirectory = do
+  absoluteSource <- canonicalizePath sourceRoot
+  preparedScratch <- prepareRemovalPath (workDirectory </> "inspect-assets")
+  case preparedScratch >>= validatePreparedPath [absoluteSource] of
+    Left buildError -> pure (Left buildError)
+    Right scratch -> withSinglePdf absoluteSource $ \pdf -> do
+      resetDirectory scratch
+      parsed <- parsePdf pdf scratch
+      removePathForcibly scratch
+      pure $ do
+        (_, summary) <- parsed
+        Right (summaryText pdf summary)
 
-buildRepository :: FilePath -> FilePath -> IO (Either BuildError Text)
-buildRepository repositoryRoot outputDirectory = do
-  absoluteRoot <- canonicalizePath repositoryRoot
+buildRepository :: FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
+buildRepository sourceRoot templateDirectory outputDirectory title = do
+  absoluteSource <- canonicalizePath sourceRoot
+  absoluteTemplates <- canonicalizePath templateDirectory
   prepared <- prepareOutputDirectories outputDirectory
   case prepared of
     Left buildError -> pure (Left buildError)
     Right (absoluteOutput, stagingDirectory, backupDirectory) ->
-      case traverse (validateOutputPath absoluteRoot) [absoluteOutput, stagingDirectory, backupDirectory] of
+      case traverse (validatePreparedPath [absoluteSource, absoluteTemplates]) [absoluteOutput, stagingDirectory, backupDirectory] of
         Left buildError -> pure (Left buildError)
-        Right _ -> buildToStaging absoluteRoot absoluteOutput stagingDirectory backupDirectory
+        Right _ -> buildToStaging absoluteSource absoluteTemplates absoluteOutput stagingDirectory backupDirectory title
 
-buildToStaging :: FilePath -> FilePath -> FilePath -> FilePath -> IO (Either BuildError Text)
-buildToStaging absoluteRoot absoluteOutput stagingDirectory backupDirectory =
-  withSinglePdf absoluteRoot $ \pdf -> do
+buildToStaging :: FilePath -> FilePath -> FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
+buildToStaging absoluteSource absoluteTemplates absoluteOutput stagingDirectory backupDirectory title =
+  withSinglePdf absoluteSource $ \pdf -> do
     resetDirectory stagingDirectory
     parsed <- parsePdf pdf (stagingDirectory </> "assets")
     case parsed of
@@ -92,29 +98,44 @@ buildToStaging absoluteRoot absoluteOutput stagingDirectory backupDirectory =
       Right (rawScene, summary) -> case validateScene rawScene of
         Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
         Right scene -> do
-          writeSite (absoluteRoot </> "site") stagingDirectory scene
+          writeSite absoluteTemplates stagingDirectory title scene
           promoted <- promoteDirectory stagingDirectory absoluteOutput backupDirectory
           pure $ case promoted of
             Left buildError -> Left buildError
             Right () -> Right ("Built JavaScript scene from " <> Text.pack (takeFileName pdf) <> "\n" <> summaryText pdf summary)
 
-evaluateRepository :: FilePath -> FilePath -> IO (Either BuildError Text)
-evaluateRepository repositoryRoot outputDirectory = do
-  built <- buildRepository repositoryRoot outputDirectory
-  case built of
+evaluateRepository :: FilePath -> FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
+evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory title = do
+  absoluteSource <- canonicalizePath sourceRoot
+  absoluteTemplates <- canonicalizePath templateDirectory
+  preparedOutput <- prepareOutputDirectories outputDirectory
+  preparedReport <- prepareRemovalPath reportDirectory
+  case (,) <$> preparedOutput <*> preparedReport of
     Left buildError -> pure (Left buildError)
-    Right _ -> do
-      discovered <- discoverSinglePdf repositoryRoot
-      case discovered of
-        Left buildError -> pure (Left buildError)
-        Right pdf -> do
-          let reportDirectory = repositoryRoot </> "build" </> "evaluation"
-          evaluation <- runVisualEvaluation pdf outputDirectory reportDirectory
-          pure $ case evaluation of
-            Left buildError -> Left buildError
-            Right result
-              | evaluationPassed result -> Right (evaluationText "Evaluation passed." reportDirectory result)
-              | otherwise -> Left (EvaluationError (evaluationText "Evaluation did not meet the required thresholds." reportDirectory result))
+    Right ((absoluteOutput, stagingDirectory, backupDirectory), absoluteReport) ->
+      case
+          traverse (validatePreparedPath [absoluteSource, absoluteTemplates, absoluteReport]) [absoluteOutput, stagingDirectory, backupDirectory]
+            >> validatePreparedPath [absoluteSource, absoluteTemplates] absoluteReport
+        of
+          Left buildError -> pure (Left buildError)
+          Right _ -> do
+            built <- buildRepository absoluteSource absoluteTemplates absoluteOutput title
+            case built of
+              Left buildError -> pure (Left buildError)
+              Right _ -> do
+                discovered <- discoverSinglePdf absoluteSource
+                case discovered of
+                  Left buildError -> pure (Left buildError)
+                  Right pdf -> do
+                    evaluation <- runVisualEvaluation pdf absoluteOutput absoluteReport
+                    pure $ case evaluation of
+                      Left buildError -> Left buildError
+                      Right result
+                        | evaluationPassed result -> Right (evaluationText "Evaluation passed." absoluteReport result)
+                        | otherwise -> Left (EvaluationError (evaluationText "Evaluation did not meet the required thresholds." absoluteReport result))
+
+withSiteTitle :: String -> (SiteTitle -> IO (Either BuildError Text)) -> IO (Either BuildError Text)
+withSiteTitle rawTitle action = either (pure . Left) action (mkSiteTitle (Text.pack rawTitle))
 
 withSinglePdf :: FilePath -> (FilePath -> IO (Either BuildError Text)) -> IO (Either BuildError Text)
 withSinglePdf root action = discoverSinglePdf root >>= either (pure . Left) action
@@ -178,41 +199,40 @@ outputCompanionPaths outputDirectory =
     normalized = dropTrailingPathSeparator (normalise outputDirectory)
 
 prepareRemovalPath :: FilePath -> IO (Either BuildError FilePath)
-prepareRemovalPath path = do
-  let absolutePath = normalise path
-  exists <- doesPathExist absolutePath
-  isSymbolicLink <- if exists then pathIsSymbolicLink absolutePath else pure False
-  if isSymbolicLink
-    then pure (Left (IoError "DIST, its staging path, and its backup path must not be symbolic links"))
-    else do
-      canonicalParent <- canonicalizeExistingAncestors (takeDirectory absolutePath)
-      pure (Right (canonicalParent </> takeFileName absolutePath))
+prepareRemovalPath = canonicalizeRemovalPath . normalise
 
-canonicalizeExistingAncestors :: FilePath -> IO FilePath
-canonicalizeExistingAncestors path = do
-  exists <- doesPathExist path
-  if exists
-    then canonicalizePath path
-    else do
-      parent <- canonicalizeExistingAncestors (takeDirectory path)
-      pure (parent </> takeFileName path)
+canonicalizeRemovalPath :: FilePath -> IO (Either BuildError FilePath)
+canonicalizeRemovalPath path = do
+  symbolicLink <- tryIo (pathIsSymbolicLink path)
+  case symbolicLink of
+    Right True -> pure (Left (IoError "removable path targets and unresolved parents must not be symbolic links"))
+    Right False -> Right <$> canonicalizePath path
+    Left exception
+      | isDoesNotExistError exception -> do
+          parent <- canonicalizeRemovalPath (takeDirectory path)
+          pure ((</> takeFileName path) <$> parent)
+      | otherwise -> pure (Left (IoError (Text.pack (show exception))))
 
 tryIo :: IO value -> IO (Either IOException value)
 tryIo = try
 
--- | Reject output locations whose removal would also remove the repository.
+-- | Reject removable locations that overlap protected input files.
 validateOutputPath :: FilePath -> FilePath -> Either BuildError ()
-validateOutputPath repositoryRoot outputDirectory
-  | outputContainsRoot = Left (IoError "DIST must not equal or contain the repository root")
+validateOutputPath protectedRoot outputDirectory
+  | pathsOverlap = Left (IoError "a removable path must not overlap a protected root")
   | otherwise = Right ()
   where
-    relativeRoot = makeRelative (normalise outputDirectory) (normalise repositoryRoot)
-    outputContainsRoot = relativeRoot == "." || isDescendant relativeRoot
-    isDescendant path =
-      not (isAbsolute path)
-        && case splitDirectories path of
+    pathsOverlap = contains protectedRoot outputDirectory || contains outputDirectory protectedRoot
+    contains parent child = isDescendant (makeRelative (normalise parent) (normalise child))
+    isDescendant "." = True
+    isDescendant path
+      | isAbsolute path = False
+      | otherwise = case splitDirectories path of
           ".." : _ -> False
           _ -> True
+
+validatePreparedPath :: [FilePath] -> FilePath -> Either BuildError FilePath
+validatePreparedPath protectedRoots path = path <$ traverse (`validateOutputPath` path) protectedRoots
 
 summaryText :: FilePath -> PdfSummary -> Text
 summaryText pdf summary =
@@ -237,6 +257,7 @@ renderError buildError = case buildError of
   GraphicsStateError message -> "invalid PDF graphics state: " <> message
   InvalidScene message -> "invalid generated scene: " <> message
   InvalidUrl message -> "invalid PDF link: " <> message
+  InvalidSiteTitle message -> "invalid site title: " <> message
   EvaluationError message -> "evaluation failed: " <> message
   IoError message -> message
 

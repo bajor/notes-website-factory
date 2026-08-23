@@ -1,0 +1,89 @@
+name: Build PDF Site
+
+on:
+  workflow_call:
+    inputs:
+      site-title:
+        description: Browser title and accessible name for the zoomable board.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out consumer
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: source
+
+      - name: Check out factory
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: factory
+
+      - name: Set up Haskell
+        uses: haskell-actions/setup@6037f33647c3f17758a2356c80fc4a53d7e0685d # v2
+        id: setup-haskell
+        with:
+          ghc-version: '9.6.6'
+          cabal-version: '3.10.3.0'
+
+      - name: Cache Haskell build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ${{ steps.setup-haskell.outputs.cabal-store }}
+            factory/dist-newstyle
+          key: cabal-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('factory/cabal.project.freeze') }}
+          restore-keys: cabal-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2
+        id: setup-chrome
+        with:
+          chrome-version: stable
+
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils zlib1g-dev
+
+      - name: Test factory
+        run: make test
+        working-directory: factory
+
+      - name: Inspect consumer PDF
+        run: make inspect
+        working-directory: factory
+        env:
+          SOURCE: ${{ github.workspace }}/source
+          WORK: ${{ github.workspace }}/output/work
+
+      - name: Build and evaluate consumer site
+        run: make evaluate
+        working-directory: factory
+        env:
+          CHROMIUM: ${{ steps.setup-chrome.outputs.chrome-path }}
+          DIST: ${{ github.workspace }}/output/site
+          REPORT: ${{ github.workspace }}/output/evaluation
+          SITE_TITLE: ${{ inputs.site-title }}
+          SOURCE: ${{ github.workspace }}/source
+          TEMPLATES: ${{ github.workspace }}/factory/site
+          WORK: ${{ github.workspace }}/output/work
+
+      - name: Upload evaluation evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pdf-site-evaluation
+          path: output/evaluation
+          if-no-files-found: ignore
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: output/site

@@ -1,8 +1,8 @@
 ---
 type: Constitution
-title: Algorithms for Slow Learners constitution
-description: Foundational scope and constraints for the educational software factory.
-status: Ratified
+title: Notes Website Factory constitution
+description: Foundational scope and constraints for the reusable Freeform site factory.
+status: Amended
 timestamp: 2026-08-20
 ---
 # Constitution
@@ -23,3 +23,25 @@ The repository converts exactly one one-page Apple Freeform PDF into a static, z
 ## Quality Contract
 
 `make test` is the compile, unit, integration, and distribution gate. Rendering changes additionally require `make evaluate`, inspection of `build/evaluation/report.html`, and passing 18 and 72 DPI comparisons.
+
+## Amendment 1: Separate Factory and Consumer Ownership
+
+Accepted on 2026-08-23.
+
+The factory is a reusable build system, not a notes website. It owns the Haskell generator, shared viewer, fixed quality policy, synthetic fixture, and reusable artifact-building workflow. Each consumer owns exactly one one-page Apple Freeform PDF, its site title, its caller trigger, and deployment permissions.
+
+The factory emits validated `github-pages` and `pdf-site-evaluation` artifacts but does not deploy them. Consumer input, factory implementation, generated site, and evaluation evidence use separate filesystem roots. Removable paths cannot overlap those roots or use symlink targets or unresolved symlink parents. The production-content PDF formerly stored here is owned by its consumer repository.
+
+```mermaid
+flowchart LR
+  Consumer[Consumer repository<br/>PDF and caller workflow]
+  Factory[Notes Website Factory<br/>parser, viewer, evaluator]
+  Site[github-pages artifact]
+  Evidence[pdf-site-evaluation artifact]
+  Pages[Consumer GitHub Pages]
+
+  Consumer --> Factory
+  Factory --> Site
+  Factory --> Evidence
+  Site --> Pages
+```
