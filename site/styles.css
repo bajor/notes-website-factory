@@ -76,6 +76,29 @@ body,
   background: black;
 }
 
+.scene-game-icon {
+  position: absolute;
+  right: 5%;
+  bottom: 5%;
+  box-sizing: border-box;
+  width: 38%;
+  height: 38%;
+  padding: 7%;
+  border-radius: 28%;
+  color: white;
+  background: #6d28d9;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.scene-game-link:hover .scene-game-icon {
+  background: #4c1d95;
+}
+
 #viewport:focus-visible,
 .scene-link:focus-visible,
 #controls button:focus-visible {

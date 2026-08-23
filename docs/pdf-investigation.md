@@ -25,15 +25,17 @@ timestamp: 2026-08-23
 
 The board's visible handwriting and shapes are already raster data inside image XObjects. Their original Freeform geometry is not present in the PDF. Turning handwriting pixels into browser text would require optical character recognition, which is intentionally outside this project. The generator instead traces eligible artwork pixels into SVG contours. This conversion improves zoom behavior but is deterministic and lossy. The scene and browser types can represent DOM text, but production parsing rejects PDF text until font decoding, glyph metrics, and positioning are implemented.
 
+The consumer revision `cac4d34` supplied a second production observation on 2026-08-23. `Algos 2.pdf` has 41 image XObjects, 34 substantially transparent artwork resources, 5 opaque screenshots, 2 near-opaque linked cards, and 2 URI annotations. The annotations identify one YouTube video and `https://bajor.github.io/algo-arcade/#/games/next-greater-element`. The linked cards' non-opaque sample fractions are `0.008181576` and `0.008124226`; the least-transparent artwork resource is `0.033626205`. These values establish a measured gap without becoming expected reusable-workflow counts.
+
 ## Observed Resource Classification
 
 The observed source deterministically produces 35 vector artwork nodes and 9 raster image nodes. `Im29`, `Im31`, `Im33`, `Im35`, `Im37`, `Im39`, `Im41`, `Im43`, and `Im44` remain raster. The first eight are opaque screenshots or diagrams. `Im44` is a rounded-corner YouTube screenshot whose soft mask is near-opaque. These values are evidence, not reusable-workflow acceptance counts.
 
 Classification uses the soft-mask samples before tracing:
 
-- no soft mask, or a transparent-sample fraction at most `0.005`: preserve raster;
-- a transparent-sample fraction below `0.01` but above `0.005`: fail as ambiguous;
-- a transparent-sample fraction of at least `0.01`: trace as vector;
+- no soft mask, or a non-opaque sample fraction at most `0.01`: preserve raster;
+- a non-opaque sample fraction below `0.02` but above `0.01`: fail as ambiguous;
+- a non-opaque sample fraction of at least `0.02`: trace as vector;
 - no visible samples at alpha `96` or higher: fail as unsupported.
 
 Tracing quantizes RGB channels in steps of 32, treats alpha below 96 as transparent, combines same-color boundaries into even-odd paths, normalizes coordinates to the source image, and simplifies contours with a one-pixel squared tolerance. Four-corner contours are preserved so small holes cannot collapse into diagonals. The browser restores each image XObject's PDF transform when it renders the SVG path data.
@@ -59,13 +61,14 @@ The parser currently supports the subset required by the observed Freeform expor
 - Flate soft masks with matching dimensions;
 - deterministic soft-mask classification and SVG contour tracing for the observed transparent artwork profile;
 - URI link annotations and validated HTTP/HTTPS URLs;
+- typed game links for HTTPS `bajor.github.io` URLs with path `/algo-arcade/`, no credentials or explicit port, and a non-empty `#/games/` fragment route;
 - explicit rejection of PDF text until font decoding and metrics are implemented.
 
 The browser runtime currently requires axis-aligned image matrices. Validation rejects rotations and shear rather than rendering them incorrectly.
 
 ## Factory Fixture
 
-`generator/test/fixtures/minimal/minimal-freeform.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused unit tests cover raster resources, soft-mask classification, vector tracing, scene validation, and mixed source order.
+`generator/test/fixtures/minimal/minimal-freeform.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused unit tests cover raster resources, both soft-mask boundaries, vector tracing, structural game-link classification, scene validation, and mixed source order.
 
 The fixture does not broaden the support claim beyond Apple Freeform exports. New parser behavior still requires evidence from a real consumer source.
 
@@ -81,6 +84,7 @@ The following valid PDF features are not yet generalized:
 - PDF font encoding, embedded fonts, glyph widths, and `ToUnicode` handling;
 - separate stroke and fill alpha values;
 - internal destinations and non-URI annotation actions.
+- game providers, custom domains, or `bajor.github.io` pages outside the exact Algo Arcade game-route profile; these remain ordinary external links.
 
 Tracing does not recover semantic strokes, editable handwriting, original Freeform objects, gradients, or subpixel source geometry. Pixels at supported transparency levels become opaque quantized SVG fills. Opaque content remains raster rather than being guessed into vectors.
 
@@ -102,4 +106,4 @@ build/evaluation/
 `-- report.html
 ```
 
-These files are ignored build evidence. The reusable workflow uploads them as `pdf-site-evaluation`; they never enter `github-pages`, and the generated browser product has no dependency on Poppler.
+These files are ignored build evidence. The reusable workflow uploads them as `pdf-site-evaluation`; they never enter `github-pages`, and the generated browser product has no dependency on Poppler. Evaluation mode does not draw the gamepad badge because that affordance has no source-PDF pixels. Consumer validation separately inspects the normal-mode anchor, accessible label, secure new-tab attributes, and badge.

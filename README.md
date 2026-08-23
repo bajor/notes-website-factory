@@ -79,7 +79,7 @@ The parser remains intentionally limited to the observed Apple Freeform profile:
 - JPEG and 8-bit Flate image XObjects, including Flate soft masks;
 - axis-aligned image transforms;
 - clipping paths, common color operators, and Freeform opacity resources;
-- HTTP and HTTPS URI annotations, including supported YouTube URLs;
+- HTTP and HTTPS URI annotations, including supported YouTube URLs and exact HTTPS Algo Arcade game routes;
 - no PDF text until font decoding and metrics are implemented.
 
 Unsupported operators or structures fail explicitly. A caller never receives a partially rendered Pages artifact.
@@ -98,7 +98,7 @@ site/
 `-- styles.css
 ```
 
-The product contains no PDF, OCR output, full-page PDF raster, Canvas fallback, browser PDF parser, backend, Rust bundle, TypeScript bundle, or Node dependency. Relative resource references allow deployment under any GitHub Pages project path.
+The product contains no PDF, OCR output, full-page PDF raster, Canvas fallback, browser PDF parser, backend, Rust bundle, TypeScript bundle, or Node dependency. Relative resource references allow deployment under any GitHub Pages project path. YouTube annotations activate privacy-enhanced video embeds. An annotation matching `https://bajor.github.io/algo-arcade/#/games/<game>` remains a native new-tab link and receives a gamepad badge in the interactive viewer.
 
 ## Local Development
 
@@ -132,7 +132,7 @@ make evaluate \
 
 ## Quality Gates
 
-`make test` compiles with warnings as errors, runs focused unit tests, parses the synthetic fixture, builds a generic vector-only site, and validates its distribution. `make evaluate` additionally compares Poppler and Chromium at 18 and 72 DPI.
+`make test` compiles with warnings as errors, runs focused unit tests, parses the synthetic fixture, builds a generic vector-only site, and validates its distribution. `make evaluate` additionally compares Poppler and Chromium at 18 and 72 DPI and runs a synthetic link-runtime smoke test. Evaluation mode omits the synthesized gamepad badge so the comparison measures PDF-derived content only.
 
 The evaluator requires:
 
@@ -160,4 +160,4 @@ Factory CI invokes the reusable workflow against the fixture. This tests the sam
 
 ## Acceptance Criteria
 
-The factory is healthy when `make test` and `make evaluate` pass, CI proves the reusable workflow against the fixture, supported consumer PDFs produce visually validated Pages artifacts, unsupported input fails explicitly, and no consumer-specific content or deployment policy is required by the factory.
+The factory is healthy when `make test` and `make evaluate` pass, CI proves the reusable workflow against the fixture, supported consumer PDFs produce visually validated Pages artifacts, recognized game links expose an accessible click affordance on desktop and mobile, unsupported input fails explicitly, and no consumer-specific content or deployment policy is required by the factory.

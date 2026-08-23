@@ -18,6 +18,7 @@ onboarded: 2026-08-20
 - Consumer input, factory source, site output, and evaluation evidence use separate paths.
 - Generated sites contain no PDF, full-page PDF raster, OCR output, Canvas fallback, or browser PDF parser.
 - Substantially transparent Freeform artwork becomes inline SVG. Opaque and near-opaque screenshots stay raster. Ambiguous soft masks fail explicitly.
+- Exact HTTPS Algo Arcade game-route annotations become typed game links with an interactive gamepad badge; other HTTP or HTTPS URLs retain their existing behavior.
 - Only genuine supported PDF text operators may become DOM text.
 - The shared viewer is factory-owned and supports desktop and mobile interactions.
 - The project must not require Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, OCR, or a backend.
@@ -45,7 +46,7 @@ onboarded: 2026-08-20
 - `generator/src/Factory/Geometry.hs`: authoritative coordinate and matrix math.
 - `generator/src/Factory/Interpreter.hs`: pure PDF operator state machine.
 - `generator/src/Factory/Vectorize.hs`: pure image classification, quantization, contour tracing, and simplification.
-- `generator/src/Factory/Pdf.hs`: `pdf-toolbox` boundary, stream decoding, resource preparation, raster materialization, and annotations.
+- `generator/src/Factory/Pdf.hs`: `pdf-toolbox` boundary, stream decoding, resource preparation, raster materialization, annotations, and structural URL classification.
 - `generator/src/Factory/Site.hs`: scene validation, metadata rendering, and deterministic product emission.
 - `generator/src/Factory/Evaluation.hs`: Poppler/Chromium feedback loop and thresholds.
 - `generator/src/Factory/Pipeline.hs`: command dispatch, source discovery, path protection, staging, and promotion.
@@ -71,7 +72,7 @@ Do not move logic across these boundaries without updating the architecture docu
 - Return `Either BuildError value` for expected parser and validation failures.
 - Keep functions short and single-purpose. Avoid speculative abstractions and dependencies.
 - Preserve deterministic ordering when reading unordered PDF dictionaries.
-- Do not add consumer-specific filenames, dimensions, resource names, scene counts, repository names, or URLs.
+- Do not add consumer-specific filenames, dimensions, resource names, scene counts, repository names, or complete content URLs. A provider route format may be recognized only when it is part of documented factory behavior.
 - Do not weaken evaluation thresholds or make them caller-configurable merely to pass another source.
 - Do not commit `dist/`, `build/`, `dist-newstyle/`, generated evaluation images, or Mermaid source.
 
@@ -87,12 +88,15 @@ Do not move logic across these boundaries without updating the architecture docu
 - the runtime contains no Canvas fallback;
 - no PDF is present in the generated site;
 - generated resource references are relative.
+- exact Algo Arcade game routes and deceptive lookalike hosts receive different typed targets.
 
 `make evaluate` must additionally prove:
 
 - Chromium reaches `data-ready="true"` after loading generated assets and fonts;
 - visual error and ink metrics meet the constants in `Factory.Evaluation` at 18 and 72 DPI;
 - `build/evaluation/report.html` and its reference, generated, and difference images are current.
+- synthesized interactive affordances are absent from PDF-fidelity screenshots.
+- normal-mode game anchors expose route-specific labels, secure new-tab attributes, and a visible gamepad badge.
 
 CI must call `.github/workflows/build-pdf-site.yml` as a reusable workflow against the factory fixture. A real consumer migration must additionally pass the same workflow with its own source checkout.
 

@@ -22,6 +22,14 @@ A scene node containing normalized, closed SVG paths traced from an eligible emb
 
 An extracted PNG or JPEG file whose source pixels remain pixels in the generated site.
 
+## Game Link
+
+A typed scene link whose structurally parsed URI matches the documented HTTPS Algo Arcade game-route profile. The normal viewer marks it with a gamepad badge and opens the original URI in a new tab.
+
+## Evaluation Mode
+
+The non-interactive browser rendering mode selected by the evaluator at a specific dots-per-inch scale. It hides controls and synthesized game badges so screenshots contain only PDF-derived scene content.
+
 ## Evaluation Oracle
 
 Poppler's development-only rendering of the source PDF, used as an independent visual reference for Chromium output.

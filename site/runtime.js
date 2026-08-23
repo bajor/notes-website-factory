@@ -141,20 +141,48 @@ function addText(node) {
 }
 
 function addLink(node) {
-  const element = document.createElement(node.target.kind === 'external' ? 'a' : 'button');
+  const element = document.createElement(node.target.kind === 'youtube' ? 'button' : 'a');
   element.className = 'scene-link';
   positionLink(element, node.bounds);
-  if (node.target.kind === 'external') {
+  if (node.target.kind !== 'youtube') {
     element.href = node.target.url;
     element.target = '_blank';
     element.rel = 'noopener noreferrer';
-    element.setAttribute('aria-label', `Open ${node.target.url}`);
+    const label = node.target.kind === 'game' ? gameLabel(node.target.url) : `Open ${node.target.url}`;
+    element.setAttribute('aria-label', label);
+    if (node.target.kind === 'game') {
+      element.title = label;
+      if (!evaluationMode) addGameIcon(element);
+    }
   } else {
     element.type = 'button';
     element.setAttribute('aria-label', 'Play YouTube video');
     element.addEventListener('click', () => activateYouTube(element, node.target));
   }
   board.append(element);
+}
+
+function gameLabel(url) {
+  const encodedRoute = new URL(url).hash.slice('#/games/'.length);
+  let route;
+  try {
+    route = decodeURIComponent(encodedRoute);
+  } catch {
+    route = encodedRoute;
+  }
+  return `Play ${route.replaceAll('-', ' ')} in Algo Arcade`;
+}
+
+function addGameIcon(element) {
+  element.classList.add('scene-game-link');
+  const icon = createSvgElement('svg');
+  const path = createSvgElement('path');
+  icon.classList.add('scene-game-icon');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('aria-hidden', 'true');
+  path.setAttribute('d', 'M7 8h10a4 4 0 0 1 4 4v4a2 2 0 0 1-3.2 1.6L15.7 16H8.3l-2.1 1.6A2 2 0 0 1 3 16v-4a4 4 0 0 1 4-4ZM8 11v4M6 13h4M16 12h.01M18 14h.01');
+  icon.append(path);
+  element.append(icon);
 }
 
 function activateYouTube(element, target) {

@@ -8,6 +8,7 @@
 -- domain. Everything after this module is independent of PDF internals.
 module Factory.Pdf
   ( PdfSummary (..)
+  , classifyUrl
   , parsePdf
   , rejectDecode
   , rgbaImage
@@ -29,7 +30,7 @@ import Factory.Domain
 import Factory.Geometry (rectangleToBoard)
 import Factory.Interpreter (Resources (Resources), VisualResource (..), interpretOperators)
 import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
-import Network.URI (URI (uriAuthority, uriPath, uriQuery, uriScheme), URIAuth (uriRegName), parseURI)
+import Network.URI (URI (uriAuthority, uriFragment, uriPath, uriQuery, uriScheme), URIAuth (uriPort, uriRegName, uriUserInfo), parseURI)
 import Pdf.Content (Expr, Operator, parseContent, readNextOperator)
 import Pdf.Core
   ( Array
@@ -334,7 +335,19 @@ classifyUrl raw = case parseURI (Text.unpack raw) of
   Nothing -> Left (InvalidUrl ("invalid URI: " <> raw))
   Just uri
     | uriScheme uri `notElem` ["http:", "https:"] -> Left (InvalidUrl ("unsupported URI scheme: " <> raw))
+    | isGameUri uri -> Right (Game (GameUrl raw))
     | otherwise -> maybe (Right (External (WebUrl raw))) (Right . YouTube . VideoId) (youtubeId uri)
+
+isGameUri :: URI -> Bool
+isGameUri uri = case uriAuthority uri of
+  Nothing -> False
+  Just authority ->
+    uriScheme uri == "https:"
+      && null (uriUserInfo authority)
+      && null (uriPort authority)
+      && Text.toLower (Text.pack (uriRegName authority)) == "bajor.github.io"
+      && uriPath uri == "/algo-arcade/"
+      && maybe False (not . Text.null) (Text.stripPrefix "#/games/" (Text.pack (uriFragment uri)))
 
 youtubeId :: URI -> Maybe Text
 youtubeId uri = do

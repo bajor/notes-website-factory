@@ -18,6 +18,7 @@ module Factory.Domain
   , Color (..)
   , Coordinate (..)
   , FillRule (..)
+  , GameUrl (..)
   , LinkTarget (..)
   , Matrix (..)
   , PaintStyle (..)
@@ -128,6 +129,9 @@ data Asset = Asset
 newtype VideoId = VideoId {unVideoId :: Text}
   deriving stock (Eq, Show)
 
+newtype GameUrl = GameUrl {unGameUrl :: Text}
+  deriving stock (Eq, Show)
+
 newtype WebUrl = WebUrl {unWebUrl :: Text}
   deriving stock (Eq, Show)
 
@@ -145,7 +149,7 @@ mkSiteTitle rawTitle
 siteTitleText :: SiteTitle -> Text
 siteTitleText (SiteTitle title) = title
 
-data LinkTarget = YouTube VideoId | External WebUrl
+data LinkTarget = YouTube VideoId | Game GameUrl | External WebUrl
   deriving stock (Eq, Show)
 
 data TextRun = TextRun
@@ -314,6 +318,7 @@ instance ToJSON SceneNode where
     where
       encodeTarget target = case target of
         YouTube videoId -> object ["kind" .= ("youtube" :: Text), "videoId" .= unVideoId videoId]
+        Game url -> object ["kind" .= ("game" :: Text), "url" .= unGameUrl url]
         External url -> object ["kind" .= ("external" :: Text), "url" .= unWebUrl url]
 
 instance ToJSON Asset where
