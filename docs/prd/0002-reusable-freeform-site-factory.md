@@ -45,7 +45,7 @@ The original repository combined one production PDF, its branded site, generator
 | Reusability | A different supported Freeform board has different dimensions and scene counts. The unchanged workflow builds it. | Consumer-path integration run. |
 | Fidelity | A supported source is rendered at whole-board and native-point scales. | `make evaluate` at 18 and 72 DPI. |
 | Isolation | Factory and consumer both contain repository files. Only the consumer root participates in PDF discovery. | Reusable-workflow two-checkout smoke run. |
-| Safety | A removable path equals or contains a protected root. The command fails before removal. | Focused path-validation tests. |
+| Safety | A removable path overlaps a protected root or another independently owned output root. The command fails before removal. | Focused path-validation tests. |
 | Compatibility | A consumer references `main`. Workflow implementation and source resolve to one commit. | Checkout uses `job.workflow_sha`. |
 
 ## Acceptance
@@ -58,3 +58,4 @@ The requirement is accepted when the factory fixture passes `make test` and `mak
 2. [ADR 0002](/adr/0002-separate-factory-and-consumers.md)
 3. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md)
 4. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md)
+5. [BDR 0003](/bdr/0003-source-independent-mixed-scene-output.md)

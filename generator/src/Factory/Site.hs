@@ -78,9 +78,12 @@ writeSite templateDirectory outputDirectory title scene = do
         )
 
 renderIndexTemplate :: SiteTitle -> Text.Text -> Text.Text
-renderIndexTemplate title =
-  Text.replace "{{SITE_ARIA_LABEL}}" (escapeHtml ("Zoomable page: " <> siteTitleText title))
-    . Text.replace "{{SITE_TITLE}}" (escapeHtml (siteTitleText title))
+renderIndexTemplate title template =
+  Text.intercalate renderedTitle (map renderAriaLabel (Text.splitOn "{{SITE_TITLE}}" template))
+  where
+    renderedTitle = escapeHtml (siteTitleText title)
+    renderedAriaLabel = escapeHtml ("Zoomable page: " <> siteTitleText title)
+    renderAriaLabel = Text.intercalate renderedAriaLabel . Text.splitOn "{{SITE_ARIA_LABEL}}"
 
 escapeHtml :: Text.Text -> Text.Text
 escapeHtml =

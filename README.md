@@ -128,7 +128,7 @@ make evaluate \
   SITE_TITLE='My Notes'
 ```
 
-`SOURCE` must contain exactly one PDF. `TEMPLATES` defaults to this repository's `site/` directory. Output and evaluation paths are validated before any removable directory is reset.
+`SOURCE` must contain exactly one PDF. `TEMPLATES` defaults to this repository's `site/` directory. Output and evaluation paths must be non-symlink, non-overlapping paths outside the source and templates; the factory validates them before any removable directory is reset.
 
 ## Quality Gates
 

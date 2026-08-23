@@ -119,7 +119,7 @@ The production path never renders a full-page PDF image. Poppler exists only in 
 2. The parser requires exactly one page and fails on unsupported structures.
 3. `classifyImage` preserves masks at or below `0.005` transparent samples, traces masks at or above `0.01`, and rejects the interval.
 4. `validateScene` checks dimensions, references, finite values, opacities, image transforms, and the full-board-raster prohibition.
-5. Output, staging, backup, scratch, and report paths must not equal or contain source or template roots.
+5. Existing removable locations are canonicalized, while symlink targets and unresolved symlink parents are rejected; removable paths cannot overlap source, templates, or another independently owned output root.
 6. Output is written to `DIST.building` before atomic-style promotion through `DIST.previous`.
 7. Distribution checks require product files, relative references, no PDF, and no Canvas fallback without assuming scene counts.
 8. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
@@ -132,4 +132,4 @@ The production path never renders a full-page PDF image. Poppler exists only in 
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, and [BDR 0003](/bdr/0003-source-independent-mixed-scene-output.md) owns source-independent mixed rendering behavior.

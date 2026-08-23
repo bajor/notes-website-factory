@@ -3,7 +3,7 @@ type: BDR
 title: Mixed scene output
 description: Observable classification, emission, rendering, and evaluation behavior.
 status: Superseded
-superseded_by: "0002"
+superseded_by: "0003"
 timestamp: 2026-08-20
 ---
 # Mixed Scene Output

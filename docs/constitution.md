@@ -30,7 +30,7 @@ Accepted on 2026-08-23.
 
 The factory is a reusable build system, not a notes website. It owns the Haskell generator, shared viewer, fixed quality policy, synthetic fixture, and reusable artifact-building workflow. Each consumer owns exactly one one-page Apple Freeform PDF, its site title, its caller trigger, and deployment permissions.
 
-The factory emits validated `github-pages` and `pdf-site-evaluation` artifacts but does not deploy them. Consumer input, factory implementation, generated site, and evaluation evidence use separate filesystem roots. The production-content PDF formerly stored here is owned by its consumer repository.
+The factory emits validated `github-pages` and `pdf-site-evaluation` artifacts but does not deploy them. Consumer input, factory implementation, generated site, and evaluation evidence use separate filesystem roots. Removable paths cannot overlap those roots or use symlink targets or unresolved symlink parents. The production-content PDF formerly stored here is owned by its consumer repository.
 
 ```mermaid
 flowchart LR

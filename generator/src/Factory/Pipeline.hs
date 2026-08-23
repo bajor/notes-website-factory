@@ -36,6 +36,7 @@ import System.Directory
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.FilePath (dropTrailingPathSeparator, isAbsolute, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, takeFileName, (</>))
+import System.IO.Error (isDoesNotExistError)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 
@@ -107,25 +108,31 @@ evaluateRepository :: FilePath -> FilePath -> FilePath -> FilePath -> SiteTitle 
 evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory title = do
   absoluteSource <- canonicalizePath sourceRoot
   absoluteTemplates <- canonicalizePath templateDirectory
-  absoluteOutput <- makeAbsolute outputDirectory
+  preparedOutput <- prepareOutputDirectories outputDirectory
   preparedReport <- prepareRemovalPath reportDirectory
-  case preparedReport >>= validatePreparedPath [absoluteSource, absoluteTemplates] of
+  case (,) <$> preparedOutput <*> preparedReport of
     Left buildError -> pure (Left buildError)
-    Right absoluteReport -> do
-      built <- buildRepository absoluteSource absoluteTemplates absoluteOutput title
-      case built of
-        Left buildError -> pure (Left buildError)
-        Right _ -> do
-          discovered <- discoverSinglePdf absoluteSource
-          case discovered of
-            Left buildError -> pure (Left buildError)
-            Right pdf -> do
-              evaluation <- runVisualEvaluation pdf absoluteOutput absoluteReport
-              pure $ case evaluation of
-                Left buildError -> Left buildError
-                Right result
-                  | evaluationPassed result -> Right (evaluationText "Evaluation passed." absoluteReport result)
-                  | otherwise -> Left (EvaluationError (evaluationText "Evaluation did not meet the required thresholds." absoluteReport result))
+    Right ((absoluteOutput, stagingDirectory, backupDirectory), absoluteReport) ->
+      case
+          traverse (validatePreparedPath [absoluteSource, absoluteTemplates, absoluteReport]) [absoluteOutput, stagingDirectory, backupDirectory]
+            >> validatePreparedPath [absoluteSource, absoluteTemplates] absoluteReport
+        of
+          Left buildError -> pure (Left buildError)
+          Right _ -> do
+            built <- buildRepository absoluteSource absoluteTemplates absoluteOutput title
+            case built of
+              Left buildError -> pure (Left buildError)
+              Right _ -> do
+                discovered <- discoverSinglePdf absoluteSource
+                case discovered of
+                  Left buildError -> pure (Left buildError)
+                  Right pdf -> do
+                    evaluation <- runVisualEvaluation pdf absoluteOutput absoluteReport
+                    pure $ case evaluation of
+                      Left buildError -> Left buildError
+                      Right result
+                        | evaluationPassed result -> Right (evaluationText "Evaluation passed." absoluteReport result)
+                        | otherwise -> Left (EvaluationError (evaluationText "Evaluation did not meet the required thresholds." absoluteReport result))
 
 withSiteTitle :: String -> (SiteTitle -> IO (Either BuildError Text)) -> IO (Either BuildError Text)
 withSiteTitle rawTitle action = either (pure . Left) action (mkSiteTitle (Text.pack rawTitle))
@@ -192,39 +199,35 @@ outputCompanionPaths outputDirectory =
     normalized = dropTrailingPathSeparator (normalise outputDirectory)
 
 prepareRemovalPath :: FilePath -> IO (Either BuildError FilePath)
-prepareRemovalPath path = do
-  let absolutePath = normalise path
-  exists <- doesPathExist absolutePath
-  isSymbolicLink <- if exists then pathIsSymbolicLink absolutePath else pure False
-  if isSymbolicLink
-    then pure (Left (IoError "DIST, its staging path, and its backup path must not be symbolic links"))
-    else do
-      canonicalParent <- canonicalizeExistingAncestors (takeDirectory absolutePath)
-      pure (Right (canonicalParent </> takeFileName absolutePath))
+prepareRemovalPath = canonicalizeRemovalPath . normalise
 
-canonicalizeExistingAncestors :: FilePath -> IO FilePath
-canonicalizeExistingAncestors path = do
-  exists <- doesPathExist path
-  if exists
-    then canonicalizePath path
-    else do
-      parent <- canonicalizeExistingAncestors (takeDirectory path)
-      pure (parent </> takeFileName path)
+canonicalizeRemovalPath :: FilePath -> IO (Either BuildError FilePath)
+canonicalizeRemovalPath path = do
+  symbolicLink <- tryIo (pathIsSymbolicLink path)
+  case symbolicLink of
+    Right True -> pure (Left (IoError "removable path targets and unresolved parents must not be symbolic links"))
+    Right False -> Right <$> canonicalizePath path
+    Left exception
+      | isDoesNotExistError exception -> do
+          parent <- canonicalizeRemovalPath (takeDirectory path)
+          pure ((</> takeFileName path) <$> parent)
+      | otherwise -> pure (Left (IoError (Text.pack (show exception))))
 
 tryIo :: IO value -> IO (Either IOException value)
 tryIo = try
 
--- | Reject removable locations that would also remove protected input files.
+-- | Reject removable locations that overlap protected input files.
 validateOutputPath :: FilePath -> FilePath -> Either BuildError ()
 validateOutputPath protectedRoot outputDirectory
-  | outputContainsRoot = Left (IoError "a removable path must not equal or contain a protected root")
+  | pathsOverlap = Left (IoError "a removable path must not overlap a protected root")
   | otherwise = Right ()
   where
-    relativeRoot = makeRelative (normalise outputDirectory) (normalise protectedRoot)
-    outputContainsRoot = relativeRoot == "." || isDescendant relativeRoot
-    isDescendant path =
-      not (isAbsolute path)
-        && case splitDirectories path of
+    pathsOverlap = contains protectedRoot outputDirectory || contains outputDirectory protectedRoot
+    contains parent child = isDescendant (makeRelative (normalise parent) (normalise child))
+    isDescendant "." = True
+    isDescendant path
+      | isAbsolute path = False
+      | otherwise = case splitDirectories path of
           ".." : _ -> False
           _ -> True
 

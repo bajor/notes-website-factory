@@ -23,7 +23,7 @@ onboarded: 2026-08-20
 - The project must not require Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, OCR, or a backend.
 - Poppler and Chromium are development and CI evaluation tools only.
 - Unsupported content fails explicitly rather than disappearing silently.
-- Never allow a removable output, staging, backup, scratch, or report path to equal or contain a protected input root.
+- Never allow a removable output, staging, backup, scratch, or report path to overlap a protected input root or another independently owned output root.
 
 ## Required Workflow
 

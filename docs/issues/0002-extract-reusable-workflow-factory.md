@@ -9,7 +9,7 @@ timestamp: 2026-08-23
 
 ## Scope
 
-Implement [ADR 0002](/adr/0002-separate-factory-and-consumers.md), [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md), and the scenarios in [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md).
+Implement [ADR 0002](/adr/0002-separate-factory-and-consumers.md), [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md), and the scenarios in [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) and [BDR 0003](/bdr/0003-source-independent-mixed-scene-output.md).
 
 ## Acceptance Criteria
 
