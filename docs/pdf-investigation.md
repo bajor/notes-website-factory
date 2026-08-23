@@ -1,14 +1,14 @@
 ---
 type: Reference
-title: Apple Freeform PDF investigation
-description: Observed source facts, supported parsing profile, classification policy, and limitations.
-timestamp: 2026-08-20
+title: Apple Freeform PDF support profile
+description: Historical evidence, supported parsing behavior, classification policy, and explicit limitations.
+timestamp: 2026-08-23
 ---
-# PDF Investigation
+# Apple Freeform PDF Support Profile
 
-## Observed Source
+## Historical Production Evidence
 
-`Algos.pdf` was exported by the iOS Quartz PDF context. The current file has:
+[`Algos.pdf`](https://github.com/bajor/algos-for-slow-learners) was exported by the iOS Quartz PDF context and motivated the supported profile. The consumer repository now owns that production input. The observed file has:
 
 - 1 page;
 - PDF version 1.4;
@@ -27,7 +27,7 @@ The board's visible handwriting and shapes are already raster data inside image 
 
 ## Observed Resource Classification
 
-The current source deterministically produces 35 vector artwork nodes and 9 raster image nodes. `Im29`, `Im31`, `Im33`, `Im35`, `Im37`, `Im39`, `Im41`, `Im43`, and `Im44` remain raster. The first eight are opaque screenshots or diagrams. `Im44` is a rounded-corner YouTube screenshot whose soft mask is near-opaque.
+The observed source deterministically produces 35 vector artwork nodes and 9 raster image nodes. `Im29`, `Im31`, `Im33`, `Im35`, `Im37`, `Im39`, `Im41`, `Im43`, and `Im44` remain raster. The first eight are opaque screenshots or diagrams. `Im44` is a rounded-corner YouTube screenshot whose soft mask is near-opaque. These values are evidence, not reusable-workflow acceptance counts.
 
 Classification uses the soft-mask samples before tracing:
 
@@ -63,6 +63,12 @@ The parser currently supports the subset required by the observed Freeform expor
 
 The browser runtime currently requires axis-aligned image matrices. Validation rejects rotations and shear rather than rendering them incorrectly.
 
+## Factory Fixture
+
+`generator/test/fixtures/minimal/minimal-freeform.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused unit tests cover raster resources, soft-mask classification, vector tracing, scene validation, and mixed source order.
+
+The fixture does not broaden the support claim beyond Apple Freeform exports. New parser behavior still requires evidence from a real consumer source.
+
 ## Explicit Limitations
 
 The following valid PDF features are not yet generalized:
@@ -96,4 +102,4 @@ build/evaluation/
 `-- report.html
 ```
 
-These files are ignored build evidence. They are not deployed, and the generated browser product has no dependency on Poppler.
+These files are ignored build evidence. The reusable workflow uploads them as `pdf-site-evaluation`; they never enter `github-pages`, and the generated browser product has no dependency on Poppler.

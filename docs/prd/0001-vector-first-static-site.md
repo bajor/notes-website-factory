@@ -2,7 +2,8 @@
 type: PRD
 title: Vector-first static site
 description: Requirements for scalable artwork with raster screenshot preservation.
-status: Accepted
+status: Superseded
+superseded_by: "0002"
 timestamp: 2026-08-20
 ---
 # Vector-First Static Site

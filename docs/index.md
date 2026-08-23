@@ -3,9 +3,8 @@ okf_version: "0.1"
 ---
 # Documentation
 
-- [Constitution](/constitution.md): product scope and non-negotiable boundaries.
-- [Architecture](/architecture.md): modules, data flow, safety, and determinism.
-- [PDF investigation](/pdf-investigation.md): observed source profile and parser limitations.
+- [Architecture](/architecture.md): repository ownership, workflow sequence, modules, and safety.
+- [Apple Freeform PDF support profile](/pdf-investigation.md): historical evidence, supported behavior, and parser limitations.
 - [Product requirements](/prd/index.md): accepted product requirements.
 - [Architecture decisions](/adr/index.md): confirmed structural decisions.
 - [Behavior decisions](/bdr/index.md): observable contracts and test design.

@@ -1,138 +1,96 @@
-# Algorithms for Slow Learners
+# Notes Website Factory
 
-This repository is a small Haskell software factory. It reads the repository's one-page Apple Freeform PDF, interprets its PDF drawing instructions, and generates a zoomable static website.
+This repository provides a reusable GitHub Actions workflow that converts one-page Apple Freeform PDFs into responsive, zoomable static websites. Consumer repositories provide one PDF and a site title. The factory owns the Haskell parser, shared viewer, visual evaluation, and Pages artifact production.
 
-The project has two products:
+The deployed browser never downloads or parses the PDF. It receives JavaScript scene data, inline SVG artwork, DOM overlays, and extracted raster assets. Poppler and Chromium are development or CI evaluation tools, not runtime dependencies.
 
-- `dist/`, a browser-ready site made from JavaScript, inline SVG artwork, DOM overlays, and extracted raster assets;
-- a readable example of functional programming, typed boundaries, and evidence-driven parser development.
+## Consumer Contract
 
-The deployed browser never downloads or parses the PDF. Poppler is used only as a development oracle for visual comparison, not as the production renderer.
+A consumer repository must contain exactly one non-symlink PDF. The PDF must contain exactly one page and use the supported Apple Freeform export profile documented in [`docs/pdf-investigation.md`](docs/pdf-investigation.md).
 
-## Quick Start
+The caller supplies one required workflow input:
 
-Required versions:
-
-- GHC 9.6.6;
-- Cabal 3.10.3.0;
-- `zlib1g-dev` for the PDF library;
-- Poppler's `pdftoppm` and Chromium only for `make evaluate`;
-- Python 3 only for `make serve`.
-
-On Ubuntu, install the system libraries with:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y zlib1g-dev poppler-utils
-```
-
-Install Chromium or Chrome separately if the `chromium` command is unavailable. Set `CHROMIUM=/absolute/path/to/chrome` when the browser uses another command name.
-
-Then run:
-
-```bash
-cabal update
-make test
-make evaluate
-make serve
-```
-
-Open `http://localhost:8000`. `make serve` builds `dist/` before starting the local server.
-
-## Factory Commands
-
-| Command | Result |
+| Input | Meaning |
 | --- | --- |
-| `make inspect` | Finds the only PDF and reports its page, operator, image, and link counts. |
-| `make test` | Compiles with warnings as errors, runs unit tests, parses the real PDF, builds the site, and validates `dist/`. |
-| `make build` | Generates the static site in `dist/`. Set `DIST=/path` to choose another output directory. |
-| `make evaluate` | Rebuilds the site, compares it with Poppler's rendering, and writes evidence to `build/evaluation/`. |
-| `make serve` | Serves `dist/` at `http://localhost:8000`. |
+| `site-title` | Non-empty browser title. The factory also derives the viewer's accessible name from it. |
 
-## Learn the Code in Order
+The reusable workflow produces two artifacts:
 
-1. Start with `generator/src/Factory/Domain.hs`. Domain types name coordinates, assets, links, scene nodes, and failures. The `Scene` phase parameter distinguishes `Scene 'Unvalidated` from `Scene 'Validated`.
-2. Read `generator/src/Factory/Geometry.hs`. Every function is pure: the same matrix and point always produce the same result.
-3. Read `generator/src/Factory/Interpreter.hs`. `foldM` implements an immutable state machine. Each PDF operator receives the old machine and returns either a typed error or a new machine.
-4. Read `generator/src/Factory/Vectorize.hs`. It classifies embedded images and traces eligible Freeform artwork into deterministic SVG contours.
-5. Read `generator/src/Factory/Pdf.hs`. This is the PDF effect boundary. `pdf-toolbox` reads objects and streams; this module converts them into the project's domain.
-6. Read `generator/src/Factory/Site.hs`. Validation changes the scene's type before JavaScript can be emitted.
-7. Read `generator/src/Factory/Pipeline.hs`. This is the imperative shell that discovers files, stages output, and connects the pure stages.
-8. Read `generator/src/Factory/Evaluation.hs`. The parser's output is compared with a mature renderer at two resolutions so that visual errors become measurable evidence.
+| Artifact | Meaning |
+| --- | --- |
+| `github-pages` | Validated static website ready for `actions/deploy-pages`. |
+| `pdf-site-evaluation` | Poppler references, Chromium screenshots, difference images, metrics, and `report.html`. |
 
-## Functional Programming Ideas
+The workflow intentionally does not deploy. Each consumer owns its branch trigger, permissions, environment protection, concurrency, and Pages deployment.
 
-### Pure Core, Effectful Shell
+## Consumer Workflow
 
-Geometry, operator interpretation, image classification, contour tracing, URL classification, and scene validation do not choose files or mutate global state. File and process operations stay at the edges in `Factory.Pdf`, `Factory.Site`, `Factory.Evaluation`, and `Factory.Pipeline`.
+Configure the consumer repository's Pages source as **GitHub Actions**, then create `.github/workflows/pages.yml`:
 
-This separation makes failures reproducible. A failing operator list can be passed directly to `interpretOperators` without opening a PDF or browser.
+```yaml
+name: Publish Notes
 
-### Invalid States Become Hard to Express
+on:
+  pull_request:
+  push:
+    branches: [main]
 
-PDF and browser coordinates use separate phantom types:
+permissions: {}
 
-```haskell
-pdfPointToBoard :: Coordinate PdfSpace -> Point PdfSpace -> Point BoardSpace
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    uses: bajor/notes-website-factory/.github/workflows/build-pdf-site.yml@main
+    with:
+      site-title: My Notes
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 ```
 
-An unvalidated scene cannot be passed to the emitter:
+Pull requests build and evaluate the site without deploying. A push to `main`, including a merged pull request, deploys only after the reusable build succeeds.
 
-```haskell
-validateScene :: Scene 'Unvalidated -> Either BuildError (Scene 'Validated)
-writeSite :: FilePath -> FilePath -> Scene 'Validated -> IO ()
-```
+The example intentionally references `@main`. This makes every new run use the latest factory commit. The workflow checks out its implementation through `job.workflow_sha`, so a run always uses generator source from the exact commit that supplied the workflow file. Consumers that require immutable behavior may replace `main` with a full commit SHA.
 
-The compiler enforces the order. Runtime validation still checks values that types alone cannot prove, including finite dimensions, valid opacities, known assets, and the prohibition on a full-board raster substitute.
+## Input Scope
 
-### Errors Are Values
+The workflow is reusable across different board dimensions, filenames, repositories, resource names, and mixed-scene counts. It does not assume a specific page title, URL, number of images, or number of vector nodes.
 
-Expected failures use `Either BuildError value`. Missing resources, unsupported image formats, invalid graphics state, unsafe output paths, and failed evaluation do not require hidden exceptions to cross the functional core.
+The parser remains intentionally limited to the observed Apple Freeform profile:
 
-## AI Engineering Loop
-
-Treat parser work as a measured loop rather than a one-shot generation prompt:
-
-1. Inspect the source PDF and record objective facts.
-2. Add the smallest domain type or operator transition needed by the evidence.
-3. Add one focused unit test for that transition.
-4. Run `make test` to prove compilation, unit behavior, real-PDF parsing, and deployable output.
-5. Run `make evaluate` to compare the generated browser scene with Poppler's reference.
-6. Inspect `build/evaluation/report.html` and both amplified difference images.
-7. Repeat only where the evidence shows a gap.
-
-The evaluator currently requires all of these conditions:
-
-- mean normalized channel error at most `0.02`;
-- at least `0.96` of pixels within the per-channel tolerance;
-- generated/reference ink ratio from `0.85` through `1.15`;
-- a browser DOM marked `data-ready="true"` after all image and font loads finish.
-
-Each condition must pass at 18 DPI for the whole-board view and at 72 DPI for native PDF-point-scale detail.
-
-## Input Contract
-
-The repository must contain exactly one non-symlink PDF file, and that PDF must contain exactly one page. `Algos.pdf` is the current source.
-
-The current implementation intentionally targets the observed Apple Freeform export profile:
-
-- unrotated page with matching zero-origin MediaBox and CropBox;
+- unrotated pages with matching zero-origin MediaBox and CropBox;
 - JPEG and 8-bit Flate image XObjects, including Flate soft masks;
-- evidence-based image classification that preserves opaque and near-opaque screenshots as raster, traces substantially transparent Freeform artwork as SVG, and rejects ambiguous masks;
 - axis-aligned image transforms;
-- clipping paths, common color operators, and Freeform's opacity resources;
-- HTTP and HTTPS URI annotations, including YouTube watch, short, and embed URLs;
-- no text objects in the current source; text operators fail until font decoding and metrics are implemented.
+- clipping paths, common color operators, and Freeform opacity resources;
+- HTTP and HTTPS URI annotations, including supported YouTube URLs;
+- no PDF text until font decoding and metrics are implemented.
 
-Unsupported PDF operators or structures fail the build instead of being silently discarded. Known limitations are documented in `docs/pdf-investigation.md`.
+Unsupported operators or structures fail explicitly. A caller never receives a partially rendered Pages artifact.
 
-## Generated Output
+## Generated Product
 
-`make build` writes:
+The `github-pages` artifact contains:
 
 ```text
-dist/
-|-- assets/
+site/
+|-- assets/                 # Present only when raster assets are required.
 |-- index.html
 |-- runtime.js
 |-- scene.generated.js
@@ -140,24 +98,66 @@ dist/
 `-- styles.css
 ```
 
-For the current `Algos.pdf`, the validated scene contains 35 inline SVG artwork nodes and 9 raster image nodes backed by exactly 9 files under `dist/assets/`. The output contains no PDF, OCR result, full-page screenshot, Rust bundle, TypeScript bundle, Node dependency, browser PDF parser, or server component. All references are relative so the site works under the GitHub Pages project path.
+The product contains no PDF, OCR output, full-page PDF raster, Canvas fallback, browser PDF parser, backend, Rust bundle, TypeScript bundle, or Node dependency. Relative resource references allow deployment under any GitHub Pages project path.
 
-## Documentation
+## Local Development
 
-[`docs/index.md`](docs/index.md) indexes the architecture, observed PDF profile, requirements, decisions, behavior records, and implementation issues. Keep those records synchronized with structural or behavioral changes according to the strict living-docs policy in `AGENTS.md`.
+Required versions:
 
-## Deployment
+- GHC 9.6.6;
+- Cabal 3.10.3.0;
+- `zlib1g-dev`;
+- Poppler and Chromium for visual evaluation;
+- Python 3 only for `make serve`.
 
-`.github/workflows/pages.yml` builds `dist/` with GHC 9.6.6 and Cabal 3.10.3.0, then deploys it through the official GitHub Pages actions. Configure the repository's Pages source as **GitHub Actions**.
+Run the factory's synthetic one-page fixture:
 
-The PR-only architecture diagram cleanup uses the `REMOVE_VISUALS_MAIN` repository secret. The `bajor` user is the only bypass actor on the `require-pr-main` ruleset so that the cleanup commit can remove merged review artifacts.
-
-Expected project URL:
-
-```text
-https://bajor.github.io/algos-for-slow-learners/
+```bash
+make test
+make evaluate
+make serve
 ```
+
+Build another supported source directory explicitly:
+
+```bash
+make evaluate \
+  SOURCE=/absolute/path/to/consumer \
+  DIST=/absolute/path/to/output/site \
+  REPORT=/absolute/path/to/output/evaluation \
+  SITE_TITLE='My Notes'
+```
+
+`SOURCE` must contain exactly one PDF. `TEMPLATES` defaults to this repository's `site/` directory. Output and evaluation paths are validated before any removable directory is reset.
+
+## Quality Gates
+
+`make test` compiles with warnings as errors, runs focused unit tests, parses the synthetic fixture, builds a generic vector-only site, and validates its distribution. `make evaluate` additionally compares Poppler and Chromium at 18 and 72 DPI.
+
+The evaluator requires:
+
+- mean normalized channel error at most `0.02`;
+- at least `0.96` of pixels within per-channel tolerance;
+- generated/reference ink ratio from `0.85` through `1.15`;
+- a browser DOM marked `data-ready="true"` after assets and fonts load.
+
+Factory CI invokes the reusable workflow against the fixture. This tests the same isolated consumer/factory checkout topology used by external repositories.
+
+## Code Map
+
+1. `Factory.Domain` owns shared types and invalid-state prevention.
+2. `Factory.Geometry` owns coordinate and affine matrix math.
+3. `Factory.Interpreter` owns the immutable PDF operator state machine.
+4. `Factory.Vectorize` owns image classification and contour tracing.
+5. `Factory.Pdf` owns the `pdf-toolbox` boundary and asset materialization.
+6. `Factory.Site` validates scenes and emits the static product.
+7. `Factory.Pipeline` separates source, template, output, and report paths.
+8. `Factory.Evaluation` owns the Poppler/Chromium comparison.
+9. `site/` owns the shared responsive viewer.
+10. `.github/workflows/build-pdf-site.yml` owns reusable orchestration and artifact upload.
+
+[`docs/index.md`](docs/index.md) indexes the architecture, supported profile, requirements, decisions, behavior records, and implementation issues.
 
 ## Acceptance Criteria
 
-Work is complete when `make test` and `make evaluate` pass, `dist/` contains the required mixed SVG/raster scene and no PDF, desktop and mobile browser interactions work, both evaluation resolutions pass, and the generated site can be deployed without Rust, Node, Poppler, Chromium, or Haskell at runtime.
+The factory is healthy when `make test` and `make evaluate` pass, CI proves the reusable workflow against the fixture, supported consumer PDFs produce visually validated Pages artifacts, unsupported input fails explicitly, and no consumer-specific content or deployment policy is required by the factory.

@@ -2,14 +2,15 @@
 type: BDR
 title: Mixed scene output
 description: Observable classification, emission, rendering, and evaluation behavior.
-status: Accepted
+status: Superseded
+superseded_by: "0002"
 timestamp: 2026-08-20
 ---
 # Mixed Scene Output
 
 ## Behavior Flow
 
-The [review-only flowchart](../../visual-explanations/haskell-software-factory.svg) shows source discovery, classification, interpretation, validation, SVG/raster emission, browser rendering, and the independent Poppler/Chromium feedback loop. Reviewers must verify that both resource branches rejoin in source order and that evaluation output never enters `dist/`. The SVG is deleted from `main` by the cleanup workflow after the PR merges.
+The [PR 5 review](https://github.com/bajor/notes-website-factory/pull/5/files) included a review-only flowchart showing source discovery, classification, interpretation, validation, SVG/raster emission, browser rendering, and the independent Poppler/Chromium feedback loop. The SVG was deleted from `main` after merge as designed.
 
 ## Scenarios
 
