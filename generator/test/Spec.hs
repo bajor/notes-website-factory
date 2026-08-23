@@ -10,7 +10,7 @@ import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
 import Factory.Interpreter (Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (rejectDecode, rgbaImage)
-import Factory.Site (validateScene)
+import Factory.Site (renderIndexTemplate, validateScene)
 import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Name, Number))
@@ -33,6 +33,7 @@ tests =
     , imageTests
     , vectorizationTests
     , validationTests
+    , siteTests
     , evaluationTests
     , pipelineTests
     ]
@@ -134,13 +135,31 @@ evaluationTests =
         evaluationPassed (calculateDifference sparseReference blankImage) @?= False
     ]
 
+siteTests :: TestTree
+siteTests =
+  testGroup
+    "site metadata"
+    [ testCase "blank site titles are rejected" $
+        mkSiteTitle "  \n"
+          @?= Left (InvalidSiteTitle "site title must not be empty")
+    , testCase "control characters in site titles are rejected" $
+        mkSiteTitle "Notes\tSite"
+          @?= Left (InvalidSiteTitle "site title must not contain control characters")
+    , testCase "site titles are escaped in generated HTML" $
+        case mkSiteTitle "<Notes & \"Ideas\">" of
+          Left buildError -> assertFailure ("unexpected title error: " <> show buildError)
+          Right title ->
+            renderIndexTemplate title "{{SITE_TITLE}}|{{SITE_ARIA_LABEL}}"
+              @?= "&lt;Notes &amp; &quot;Ideas&quot;&gt;|Zoomable page: &lt;Notes &amp; &quot;Ideas&quot;&gt;"
+    ]
+
 pipelineTests :: TestTree
 pipelineTests =
   testGroup
     "pipeline paths"
     [ testCase "an output directory containing the repository is rejected" $
         validateOutputPath "/workspace/repository" "/workspace"
-          @?= Left (IoError "DIST must not equal or contain the repository root")
+          @?= Left (IoError "a removable path must not equal or contain a protected root")
     , testCase "an output directory inside the repository is accepted" $
         validateOutputPath "/workspace/repository" "/workspace/repository/dist"
           @?= Right ()

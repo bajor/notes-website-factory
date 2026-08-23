@@ -27,17 +27,22 @@ module Factory.Domain
   , Rect (..)
   , Scene (..)
   , SceneNode (..)
+  , SiteTitle
   , TextRun (..)
   , Validation (..)
   , VectorPath (..)
   , VectorShape (..)
   , VideoId (..)
   , WebUrl (..)
+  , mkSiteTitle
   , sceneNodes
+  , siteTitleText
   ) where
 
 import Data.Aeson (ToJSON (toJSON), object, (.=))
+import Data.Char (isControl)
 import Data.Text (Text)
+import qualified Data.Text as Text
 
 -- | A type-level label saying whether validation has run.
 data Validation = Unvalidated | Validated
@@ -126,6 +131,20 @@ newtype VideoId = VideoId {unVideoId :: Text}
 newtype WebUrl = WebUrl {unWebUrl :: Text}
   deriving stock (Eq, Show)
 
+newtype SiteTitle = SiteTitle Text
+  deriving stock (Eq, Show)
+
+mkSiteTitle :: Text -> Either BuildError SiteTitle
+mkSiteTitle rawTitle
+  | Text.null title = Left (InvalidSiteTitle "site title must not be empty")
+  | Text.any isControl title = Left (InvalidSiteTitle "site title must not contain control characters")
+  | otherwise = Right (SiteTitle title)
+  where
+    title = Text.strip rawTitle
+
+siteTitleText :: SiteTitle -> Text
+siteTitleText (SiteTitle title) = title
+
 data LinkTarget = YouTube VideoId | External WebUrl
   deriving stock (Eq, Show)
 
@@ -177,6 +196,7 @@ data BuildError
   | GraphicsStateError Text
   | InvalidScene Text
   | InvalidUrl Text
+  | InvalidSiteTitle Text
   | EvaluationError Text
   | IoError Text
   deriving stock (Eq, Show)

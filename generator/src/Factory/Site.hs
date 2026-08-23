@@ -6,7 +6,8 @@
 -- Parsing and writing are separate stages. The phase parameter on 'Scene'
 -- makes it impossible to call 'writeSite' before 'validateScene' succeeds.
 module Factory.Site
-  ( validateScene
+  ( renderIndexTemplate
+  , validateScene
   , writeSite
   ) where
 
@@ -21,6 +22,7 @@ import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Set as Set
 import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
 
 validateScene :: Scene 'Unvalidated -> Either BuildError (Scene 'Validated)
 validateScene scene
@@ -50,10 +52,11 @@ validateScene scene
     referencedAssets = Set.fromList [identifier | ImageNode identifier _ _ _ <- nodes]
     nodes = sceneContent scene
 
-writeSite :: FilePath -> FilePath -> Scene 'Validated -> IO ()
-writeSite templateDirectory outputDirectory scene = do
+writeSite :: FilePath -> FilePath -> SiteTitle -> Scene 'Validated -> IO ()
+writeSite templateDirectory outputDirectory title scene = do
   createDirectoryIfMissing True outputDirectory
-  copyFile (templateDirectory </> "index.html") (outputDirectory </> "index.html")
+  indexTemplate <- Text.readFile (templateDirectory </> "index.html")
+  Text.writeFile (outputDirectory </> "index.html") (renderIndexTemplate title indexTemplate)
   copyFile (templateDirectory </> "runtime.js") (outputDirectory </> "runtime.js")
   copyFile (templateDirectory </> "styles.css") (outputDirectory </> "styles.css")
   ByteString.writeFile (outputDirectory </> "scene.generated.js") sceneModule
@@ -73,6 +76,19 @@ writeSite templateDirectory outputDirectory scene = do
             , "links" .= countNodes isLink scene
             ]
         )
+
+renderIndexTemplate :: SiteTitle -> Text.Text -> Text.Text
+renderIndexTemplate title =
+  Text.replace "{{SITE_ARIA_LABEL}}" (escapeHtml ("Zoomable page: " <> siteTitleText title))
+    . Text.replace "{{SITE_TITLE}}" (escapeHtml (siteTitleText title))
+
+escapeHtml :: Text.Text -> Text.Text
+escapeHtml =
+  Text.replace "'" "&#39;"
+    . Text.replace "\"" "&quot;"
+    . Text.replace ">" "&gt;"
+    . Text.replace "<" "&lt;"
+    . Text.replace "&" "&amp;"
 
 nodeIsFinite :: SceneNode -> Bool
 nodeIsFinite node = case node of
