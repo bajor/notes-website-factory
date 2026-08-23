@@ -2,8 +2,9 @@
 type: BDR
 title: Source-independent mixed scene output
 description: Observable classification, rendering, validation, and evaluation behavior without production-source counts.
-status: Accepted
+status: Superseded
 supersedes: "0001"
+superseded_by: "0004"
 timestamp: 2026-08-23
 ---
 # Source-Independent Mixed Scene Output

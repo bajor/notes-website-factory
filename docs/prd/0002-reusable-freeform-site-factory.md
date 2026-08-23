@@ -58,4 +58,4 @@ The requirement is accepted when the factory fixture passes `make test` and `mak
 2. [ADR 0002](/adr/0002-separate-factory-and-consumers.md)
 3. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md)
 4. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md)
-5. [BDR 0003](/bdr/0003-source-independent-mixed-scene-output.md)
+5. [BDR 0004](/bdr/0004-interactive-linked-card-output.md)
