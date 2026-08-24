@@ -94,6 +94,14 @@ vectorizationTests =
     "vectorization"
     [ testCase "opaque images remain raster" $
         classifyImage Nothing @?= Right PreserveRaster
+    , testCase "empty soft masks fail explicitly" $
+        classifyImage (Just ByteString.empty) @?= Left (UnsupportedImage "soft mask is empty")
+    , testCase "fully transparent soft masks fail explicitly" $
+        classifyImage (Just (ByteString.pack [0, 0])) @?= Left (UnsupportedImage "soft mask contains no visible artwork")
+    , testCase "nonzero masks below the tracing cutoff remain raster" $
+        classifyImage (Just (ByteString.pack [1, 95])) @?= Right PreserveRaster
+    , testCase "alpha at the tracing cutoff remains traceable" $
+        classifyImage (Just (ByteString.pack [96])) @?= Right TraceAsVector
     , testCase "rounded screenshots with nearly opaque masks remain raster" $
         classifyImage (Just (ByteString.pack (0 : replicate 999 255))) @?= Right PreserveRaster
     , testCase "linked cards with less than one percent transparency remain raster" $
