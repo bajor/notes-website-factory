@@ -40,8 +40,8 @@ minimumTransparentFraction = 0.02
 maximumRasterTransparency :: Double
 maximumRasterTransparency = 0.01
 
-minimumVisibleAlpha :: Word8
-minimumVisibleAlpha = 96
+minimumTraceableAlpha :: Word8
+minimumTraceableAlpha = 96
 
 maximumVectorPoints :: Int
 maximumVectorPoints = 500000
@@ -53,13 +53,15 @@ classifyImage :: Maybe ByteString -> Either BuildError ImageDisposition
 classifyImage Nothing = Right PreserveRaster
 classifyImage (Just alpha)
   | ByteString.null alpha = Left (UnsupportedImage "soft mask is empty")
-  | visible == 0 = Left (UnsupportedImage "soft mask contains no visible artwork")
+  | not hasNonzeroAlpha = Left (UnsupportedImage "soft mask contains no visible artwork")
+  | not hasTraceableAlpha = Right PreserveRaster
   | transparentFraction <= maximumRasterTransparency = Right PreserveRaster
   | transparentFraction < minimumTransparentFraction = Left (UnsupportedImage "soft-masked image is too opaque to classify safely")
   | otherwise = Right TraceAsVector
   where
     samples = ByteString.unpack alpha
-    visible = length (filter (>= minimumVisibleAlpha) samples)
+    hasNonzeroAlpha = any (> 0) samples
+    hasTraceableAlpha = any (>= minimumTraceableAlpha) samples
     transparent = length (filter (< 255) samples)
     transparentFraction = fromIntegral transparent / fromIntegral (length samples)
 
@@ -101,7 +103,7 @@ insertEdge style boundaries edge = Map.insertWith Set.union style (Set.singleton
 
 pixelStyle :: PixelRGBA8 -> Maybe Style
 pixelStyle (PixelRGBA8 red green blue alpha)
-  | alpha < minimumVisibleAlpha = Nothing
+  | alpha < minimumTraceableAlpha = Nothing
   | otherwise = Just (Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) 255)
 
 quantize :: Int -> Word8 -> Word8

@@ -76,7 +76,7 @@ The workflow is reusable across different board dimensions, filenames, repositor
 The parser remains intentionally limited to the observed Apple Freeform profile:
 
 - unrotated pages with matching zero-origin MediaBox and CropBox;
-- JPEG and 8-bit Flate image XObjects, including Flate soft masks;
+- JPEG and 8-bit Flate image XObjects, including Flate soft masks and lossless raster preservation for nonzero samples below the vector tracing cutoff;
 - axis-aligned image transforms;
 - clipping paths, common color operators, and Freeform opacity resources;
 - HTTP and HTTPS URI annotations, including supported YouTube URLs and exact HTTPS Algo Arcade game routes;

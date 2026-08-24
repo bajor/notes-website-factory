@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-08-23
+timestamp: 2026-08-24
 ---
 # Architecture
 
@@ -76,7 +76,10 @@ Separate checkout and output roots prevent a factory fixture from contaminating 
 flowchart TD
   Input[Exactly one one-page PDF]
   Parse[pdf-toolbox objects and streams]
-  Classify{Classify image resource}
+  Mask{Soft mask state}
+  SourceAlpha{Nonzero source alpha}
+  Traceable{Traceable alpha sample}
+  Fraction{Non-opaque fraction}
   Raster[Preserve raster resource]
   Vector[Trace normalized SVG contours]
   Reject[Typed unsupported-image failure]
@@ -92,11 +95,18 @@ flowchart TD
   Emit[Static JavaScript scene and assets]
   Browser[Inline SVG, DOM overlays, shared controls]
 
-  Input --> Parse --> Classify
+  Input --> Parse --> Mask
   Parse --> Links --> Target
-  Classify -->|opaque or near-opaque| Raster
-  Classify -->|substantially transparent| Vector
-  Classify -->|ambiguous| Reject
+  Mask -->|absent| Raster
+  Mask -->|empty| Reject
+  Mask --> SourceAlpha
+  SourceAlpha -->|all zero| Reject
+  SourceAlpha -->|nonzero| Traceable
+  Traceable -->|none| Raster
+  Traceable -->|present| Fraction
+  Fraction -->|at most 0.01| Raster
+  Fraction -->|between 0.01 and 0.02| Reject
+  Fraction -->|at least 0.02| Vector
   Target -->|supported video| YouTube
   Target -->|exact game route| Game
   Target -->|other HTTP or HTTPS| External
@@ -109,7 +119,7 @@ flowchart TD
   Raw --> Validate --> Valid --> Emit --> Browser
 ```
 
-The production path never renders a full-page PDF image. Poppler exists only in the independent evaluation path.
+The production path never renders a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. Poppler exists only in the independent evaluation path. Data-flow drift is caught by focused classification tests, real-consumer evaluation, and review of this diagram.
 
 ## Module Boundaries
 
@@ -130,7 +140,7 @@ The production path never renders a full-page PDF image. Poppler exists only in 
 
 1. `discoverSinglePdf` scans only the consumer source root and requires one non-symlink PDF.
 2. The parser requires exactly one page and fails on unsupported structures.
-3. `classifyImage` preserves masks at or below `0.01` non-opaque samples, traces masks at or above `0.02`, and rejects the interval.
+3. `classifyImage` rejects empty and all-zero masks, preserves nonzero masks with no traceable sample, then applies the `0.01` raster boundary, the ambiguity interval, and the `0.02` vector boundary to traceable masks.
 4. `validateScene` checks dimensions, references, finite values, opacities, image transforms, and the full-board-raster prohibition.
 5. Existing removable locations are canonicalized, while symlink targets and unresolved symlink parents are rejected; removable paths cannot overlap source, templates, or another independently owned output root.
 6. Output is written to `DIST.building` before atomic-style promotion through `DIST.previous`.
@@ -147,4 +157,4 @@ The production path never renders a full-page PDF image. Poppler exists only in 
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured mask boundary and game-link trust boundary. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, and [BDR 0004](/bdr/0004-interactive-linked-card-output.md) owns source-independent mixed rendering and linked-card behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured fraction boundaries and game-link trust boundary. [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) owns low-alpha raster preservation. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, and [BDR 0005](/bdr/0005-fidelity-preserving-mixed-scene-output.md) owns source-independent mixed rendering and typed-link behavior.

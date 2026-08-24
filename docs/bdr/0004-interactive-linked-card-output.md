@@ -2,8 +2,9 @@
 type: BDR
 title: Interactive linked-card output
 description: Observable mixed-rendering, game-link, browser-affordance, and evaluation behavior.
-status: Accepted
+status: Superseded
 supersedes: "0003"
+superseded_by: "0005"
 timestamp: 2026-08-23
 ---
 # Interactive Linked-Card Output

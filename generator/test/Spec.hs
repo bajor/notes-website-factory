@@ -3,7 +3,7 @@
 
 module Main (main) where
 
-import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage)
+import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
 import Data.Aeson (Value (Object, String), toJSON)
 import Factory.Domain
 import Factory.Evaluation (EvaluationResult (evaluationPassed), calculateDifference)
@@ -83,6 +83,11 @@ imageTests =
         case rgbaImage 1 1 3 "\NUL" Nothing of
           Left buildError -> buildError @?= UnsupportedImage "decoded image samples have the wrong length"
           Right _ -> assertFailure "RGB image unexpectedly accepted one sample byte"
+    , testCase "decoded soft-mask alpha is preserved per pixel" $
+        case rgbaImage 2 1 3 (ByteString.pack [10, 20, 30, 40, 50, 60]) (Just (ByteString.pack [1, 95])) of
+          Right image -> case (pixelAt image 0 0, pixelAt image 1 0) of
+            (PixelRGBA8 _ _ _ firstAlpha, PixelRGBA8 _ _ _ secondAlpha) -> [firstAlpha, secondAlpha] @?= [1, 95]
+          Left buildError -> assertFailure ("unexpected image decoding error: " <> show buildError)
     , testCase "image Decode arrays fail explicitly" $
         rejectDecode (Just (Name "DecodeArray"))
           @?= Left (UnsupportedImage "image Decode arrays are not supported")
@@ -94,6 +99,14 @@ vectorizationTests =
     "vectorization"
     [ testCase "opaque images remain raster" $
         classifyImage Nothing @?= Right PreserveRaster
+    , testCase "empty soft masks fail explicitly" $
+        classifyImage (Just ByteString.empty) @?= Left (UnsupportedImage "soft mask is empty")
+    , testCase "fully transparent soft masks fail explicitly" $
+        classifyImage (Just (ByteString.pack [0, 0])) @?= Left (UnsupportedImage "soft mask contains no visible artwork")
+    , testCase "nonzero masks below the tracing cutoff remain raster" $
+        classifyImage (Just (ByteString.pack [0, 1, 95])) @?= Right PreserveRaster
+    , testCase "alpha at the tracing cutoff remains traceable" $
+        classifyImage (Just (ByteString.pack [96])) @?= Right TraceAsVector
     , testCase "rounded screenshots with nearly opaque masks remain raster" $
         classifyImage (Just (ByteString.pack (0 : replicate 999 255))) @?= Right PreserveRaster
     , testCase "linked cards with less than one percent transparency remain raster" $

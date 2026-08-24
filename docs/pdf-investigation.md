@@ -2,7 +2,7 @@
 type: Reference
 title: Apple Freeform PDF support profile
 description: Historical evidence, supported parsing behavior, classification policy, and explicit limitations.
-timestamp: 2026-08-23
+timestamp: 2026-08-24
 ---
 # Apple Freeform PDF Support Profile
 
@@ -27,18 +27,22 @@ The board's visible handwriting and shapes are already raster data inside image 
 
 The consumer revision `cac4d34` supplied a second production observation on 2026-08-23. `Algos 2.pdf` has 41 image XObjects, 34 substantially transparent artwork resources, 5 opaque screenshots, 2 near-opaque linked cards, and 2 URI annotations. The annotations identify one YouTube video and `https://bajor.github.io/algo-arcade/#/games/next-greater-element`. The linked cards' non-opaque sample fractions are `0.008181576` and `0.008124226`; the least-transparent artwork resource is `0.033626205`. These values establish a measured gap without becoming expected reusable-workflow counts.
 
+The consumer revision `1bdf230` supplied a third production observation on 2026-08-24. One image has a `134784`-sample soft mask with `108924` nonzero samples, a range from `0` through `89`, and no sample at or above the vector tracer's alpha cutoff of `96`. PDF renderers retain the faint image, but vector tracing would remove every pixel. This observation establishes the source-independent low-alpha raster branch without hard-coding its resource name, dimensions, or consumer identity in production logic.
+
 ## Observed Resource Classification
 
 The observed source deterministically produces 35 vector artwork nodes and 9 raster image nodes. `Im29`, `Im31`, `Im33`, `Im35`, `Im37`, `Im39`, `Im41`, `Im43`, and `Im44` remain raster. The first eight are opaque screenshots or diagrams. `Im44` is a rounded-corner YouTube screenshot whose soft mask is near-opaque. These values are evidence, not reusable-workflow acceptance counts.
 
-Classification uses the soft-mask samples before tracing:
+Classification uses the soft-mask samples before tracing, in this order:
 
-- no soft mask, or a non-opaque sample fraction at most `0.01`: preserve raster;
-- a non-opaque sample fraction below `0.02` but above `0.01`: fail as ambiguous;
-- a non-opaque sample fraction of at least `0.02`: trace as vector;
-- no visible samples at alpha `96` or higher: fail as unsupported.
+- no soft mask: preserve raster;
+- an empty or all-zero soft mask: fail as unsupported;
+- nonzero samples with no sample at alpha `96` or higher: preserve raster with source alpha;
+- traceable masks with a non-opaque sample fraction at most `0.01`: preserve raster;
+- traceable masks with a non-opaque sample fraction below `0.02` but above `0.01`: fail as ambiguous;
+- traceable masks with a non-opaque sample fraction of at least `0.02`: trace as vector.
 
-Tracing quantizes RGB channels in steps of 32, treats alpha below 96 as transparent, combines same-color boundaries into even-odd paths, normalizes coordinates to the source image, and simplifies contours with a one-pixel squared tolerance. Four-corner contours are preserved so small holes cannot collapse into diagonals. The browser restores each image XObject's PDF transform when it renders the SVG path data.
+Tracing quantizes RGB channels in steps of 32, treats alpha below 96 as untraceable, combines same-color boundaries into even-odd paths, normalizes coordinates to the source image, and simplifies contours with a one-pixel squared tolerance. A mask made entirely of nonzero untraceable samples stays raster instead of being dropped or made opaque. Four-corner contours are preserved so small holes cannot collapse into diagonals. The browser restores each image XObject's PDF transform when it renders the SVG path data.
 
 ## Selected Library
 
@@ -59,7 +63,7 @@ The parser currently supports the subset required by the observed Freeform expor
 - Freeform opacity resources;
 - JPEG image streams and 8-bit Flate streams using DeviceGray, DeviceRGB, or one/three-component ICCBased color spaces;
 - Flate soft masks with matching dimensions;
-- deterministic soft-mask classification and SVG contour tracing for the observed transparent artwork profile;
+- deterministic soft-mask classification, lossless low-alpha raster preservation, and SVG contour tracing for the observed transparent artwork profile;
 - URI link annotations and validated HTTP/HTTPS URLs;
 - typed game links for HTTPS `bajor.github.io` URLs with path `/algo-arcade/`, no credentials or explicit port, and a non-empty `#/games/` fragment route;
 - explicit rejection of PDF text until font decoding and metrics are implemented.

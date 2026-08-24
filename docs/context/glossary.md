@@ -14,6 +14,10 @@ A named PDF image resource invoked by a content-stream `Do` operator.
 
 A grayscale PDF image that supplies per-pixel opacity for another image resource.
 
+## Traceable Alpha Sample
+
+A soft-mask sample at or above alpha `96` that the current vector tracer can retain. Nonzero samples below the cutoff are source content and remain raster when a mask contains no traceable sample.
+
 ## Vector Artwork
 
 A scene node containing normalized, closed SVG paths traced from an eligible embedded image.
