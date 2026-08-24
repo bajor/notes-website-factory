@@ -2,7 +2,7 @@
 type: Issue
 title: Preserve low-alpha soft masks
 description: Retain faint source content as raster and redeploy the motivating consumer.
-status: In Progress
+status: Done
 timestamp: 2026-08-24
 ---
 # Preserve Low-Alpha Soft Masks
@@ -29,7 +29,11 @@ Implement [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) and t
 
 ## Completion Evidence
 
-To be completed with the factory pull request and consumer workflow run.
+- [Factory PR 12](https://github.com/bajor/notes-website-factory/pull/12) merged the ordered low-alpha classification and alpha-preservation tests.
+- [Factory main run 32761331127](https://github.com/bajor/notes-website-factory/actions/runs/32761331127) passed all factory gates after the PR-only review diagram was removed.
+- [Consumer run 32761643669](https://github.com/bajor/algos-for-slow-learners/actions/runs/32761643669) passed factory tests, inspected 41 vector artworks and 9 raster images, evaluated at 18 and 72 DPI, uploaded both artifacts, and deployed Pages.
+- Consumer evaluation passed with mean normalized channel error `0.0033572337098266925`, pixels within tolerance `0.9814386606996512`, and ink ratio `1.1320743255724424`.
+- [Algorithms for Slow Learners](https://bajor.github.io/algos-for-slow-learners/) serves the deployed artifact and the evaluated `Im38.png` with SHA-256 `e6825b6a56f66290427d5856ae0019102ad1996911f60602581e3628e0754402`.
 
 # References
 
