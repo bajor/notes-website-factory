@@ -15,6 +15,8 @@ The source PDF contains 44 image XObjects but no recoverable Freeform object geo
 
 Use automatic soft-mask classification. Trace substantially transparent resources into deterministic SVG contours, preserve opaque and near-opaque resources as raster, and fail the build for the ambiguity interval. Render both resource kinds in one board-sized SVG so their PDF source order is retained.
 
+[ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) refines this decision for masks whose source samples are nonzero but all below the vector tracer's alpha cutoff; those masks remain raster.
+
 ## Rejected Alternatives
 
 - Preserve all 44 resources as raster: visually faithful at one scale but pixelated when zoomed and fails the vector-first goal.

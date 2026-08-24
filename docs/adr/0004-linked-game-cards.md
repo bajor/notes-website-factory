@@ -15,6 +15,8 @@ The refreshed Algorithms PDF contains two rounded linked cards with non-opaque s
 
 Preserve masks at or below `0.01`, reject masks between `0.01` and `0.02`, and trace masks at or above `0.02`. The measured gap keeps linked screenshots raster while retaining an explicit ambiguity interval.
 
+[ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) adds a preceding traceability check for masks whose nonzero samples are all below alpha `96`; the fraction boundaries remain unchanged for masks containing traceable samples.
+
 Add `Game GameUrl` to `LinkTarget`. `Factory.Pdf` constructs it only for HTTPS URIs with exact case-insensitive host `bajor.github.io`, no credentials or port, exact path `/algo-arcade/`, and a non-empty `#/games/` fragment route. `site/runtime.js` renders that target as a secure native new-tab anchor and adds an inline SVG gamepad badge outside evaluation mode.
 
 ## Rejected Alternatives

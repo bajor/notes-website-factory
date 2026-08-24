@@ -17,7 +17,7 @@ onboarded: 2026-08-20
 - The reusable workflow accepts a validated site title and emits artifacts without deploying them.
 - Consumer input, factory source, site output, and evaluation evidence use separate paths.
 - Generated sites contain no PDF, full-page PDF raster, OCR output, Canvas fallback, or browser PDF parser.
-- Substantially transparent Freeform artwork becomes inline SVG. Opaque and near-opaque screenshots stay raster. Ambiguous soft masks fail explicitly.
+- Traceable, substantially transparent Freeform artwork becomes inline SVG. Opaque, near-opaque, and nonzero low-alpha content that the tracer cannot represent stay raster. Ambiguous soft masks fail explicitly.
 - Exact HTTPS Algo Arcade game-route annotations become typed game links with an interactive gamepad badge; other HTTP or HTTPS URLs retain their existing behavior.
 - Only genuine supported PDF text operators may become DOM text.
 - The shared viewer is factory-owned and supports desktop and mobile interactions.

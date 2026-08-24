@@ -48,9 +48,16 @@ A refreshed consumer PDF contains two linked cards whose rounded soft masks have
 
 The feature is accepted when focused tests pass, the refreshed Algorithms consumer parses both links, its normal viewer contains the secure game anchor and badge, its 18 and 72 DPI report passes unchanged thresholds, and the consumer workflow deploys from factory `main`.
 
+## Amendment 1: Traceability Precedes Fraction Classification
+
+Accepted on 2026-08-24.
+
+[PRD 0004](/prd/0004-low-alpha-soft-masks.md) requires nonzero masks with no sample at or above alpha `96` to remain raster. Requirements 30 through 32 continue to govern masks that contain at least one traceable sample.
+
 # References
 
 1. [Reusable factory requirements](/prd/0002-reusable-freeform-site-factory.md)
 2. [Linked game card decision](/adr/0004-linked-game-cards.md)
 3. [Interactive linked-card behavior](/bdr/0004-interactive-linked-card-output.md)
 4. [Observed source profile](/pdf-investigation.md)
+5. [Low-alpha soft-mask requirements](/prd/0004-low-alpha-soft-masks.md)
