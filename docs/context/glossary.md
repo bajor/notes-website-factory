@@ -2,7 +2,7 @@
 type: Context
 title: Project glossary
 description: Definitions for PDF rendering, workflow reuse, artifacts, and evaluation.
-timestamp: 2026-08-23
+timestamp: 2026-08-28
 ---
 # Glossary
 
@@ -25,6 +25,26 @@ A scene node containing normalized, closed SVG paths traced from an eligible emb
 ## Raster Asset
 
 An extracted PNG or JPEG file whose source pixels remain pixels in the generated site.
+
+## Miter Limit
+
+A PDF graphics-state value that limits the length of sharp corners formed by miter-joined strokes. The dimensionless value remains unchanged under a supported similarity transform and is emitted as SVG `stroke-miterlimit`.
+
+## Dash Pattern
+
+A PDF graphics-state pair containing a nonnegative segment-length array and a numeric phase. A supported similarity transform scales both uniformly before the factory emits SVG `stroke-dasharray` and `stroke-dashoffset`.
+
+## Similarity Transform
+
+A non-singular affine transform whose linear part combines translation, rotation, reflection, and uniform scale without shear or non-uniform scale. Such a transform preserves angles and allows a PDF native stroke to remain representable by scalar SVG line-width and dash values.
+
+## Named Color Space
+
+A color space selected by a resource name in a PDF content stream. The supported profile resolves one-component and three-component ICC-based resources to grayscale or RGB component interpretation.
+
+## Affine Image Transform
+
+A six-number matrix that can translate, scale, rotate, or shear embedded artwork. The browser composes this PDF matrix with the opposite vertical orientation used by image samples and DOM images.
 
 ## Game Link
 

@@ -4,3 +4,4 @@
 - [Issue 0002: Extract reusable workflow factory](/issues/0002-extract-reusable-workflow-factory.md) - Done. Separate production content and expose artifact generation.
 - [Issue 0003: Support interactive Algo Arcade game links](/issues/0003-support-interactive-game-links.md) - In Progress. Accept linked cards, mark game routes, and redeploy the consumer.
 - [Issue 0004: Preserve low-alpha soft masks](/issues/0004-preserve-low-alpha-soft-masks.md) - Done. Retain faint source content and redeploy the consumer.
+- [Issue 0005: Support expanded Freeform graphics](/issues/0005-support-expanded-freeform-graphics.md) - In Progress. Preserve observed path state and affine artwork, then validate the motivating consumer.

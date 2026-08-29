@@ -2,7 +2,7 @@
 type: Reference
 title: Apple Freeform PDF support profile
 description: Historical evidence, supported parsing behavior, classification policy, and explicit limitations.
-timestamp: 2026-08-24
+timestamp: 2026-08-28
 ---
 # Apple Freeform PDF Support Profile
 
@@ -28,6 +28,8 @@ The board's visible handwriting and shapes are already raster data inside image 
 The consumer revision `cac4d34` supplied a second production observation on 2026-08-23. `Algos 2.pdf` has 41 image XObjects, 34 substantially transparent artwork resources, 5 opaque screenshots, 2 near-opaque linked cards, and 2 URI annotations. The annotations identify one YouTube video and `https://bajor.github.io/algo-arcade/#/games/next-greater-element`. The linked cards' non-opaque sample fractions are `0.008181576` and `0.008124226`; the least-transparent artwork resource is `0.033626205`. These values establish a measured gap without becoming expected reusable-workflow counts.
 
 The consumer revision `1bdf230` supplied a third production observation on 2026-08-24. One image has a `134784`-sample soft mask with `108924` nonzero samples, a range from `0` through `89`, and no sample at or above the vector tracer's alpha cutoff of `96`. PDF renderers retain the faint image, but vector tracing would remove every pixel. This observation establishes the source-independent low-alpha raster branch without hard-coding its resource name, dimensions, or consumer identity in production logic.
+
+A second consumer supplied a fourth production observation on 2026-08-28. Its one-page Freeform export contains 715 operators and 145 image XObjects, producing 144 vector artworks, 1 raster image, and 5 native paths. It sets miter limit `4` with `M`, a `[28 28]` dash array at phase `0` with `d`, and stroke and fill colors through `CS`/`SC` and `cs`/`sc` using a three-component ICC-based resource. Its artwork matrices also include rotation or shear. This observation establishes reusable graphics-state and affine-image support without adding consumer-specific values or identities to production logic.
 
 ## Observed Resource Classification
 
@@ -58,8 +60,8 @@ The project, not the library, owns the graphics-state interpreter. This keeps co
 
 The parser currently supports the subset required by the observed Freeform export:
 
-- graphics save and restore, concatenated transforms, clipping, path construction, and common paint operators;
-- grayscale, RGB, and CMYK color operators;
+- graphics save and restore, affine image transforms, clipping, path construction, common paint operators, and stroke miter limits and dash patterns under non-singular similarity transforms;
+- grayscale, RGB, and CMYK color operators plus named one/three-component ICC-based path color spaces;
 - Freeform opacity resources;
 - JPEG image streams and 8-bit Flate streams using DeviceGray, DeviceRGB, or one/three-component ICCBased color spaces;
 - Flate soft masks with matching dimensions;
@@ -68,11 +70,11 @@ The parser currently supports the subset required by the observed Freeform expor
 - typed game links for HTTPS `bajor.github.io` URLs with path `/algo-arcade/`, no credentials or explicit port, and a non-empty `#/games/` fragment route;
 - explicit rejection of PDF text until font decoding and metrics are implemented.
 
-The browser runtime currently requires axis-aligned image matrices. Validation rejects rotations and shear rather than rendering them incorrectly.
+The browser composes each image's complete PDF matrix with the opposite vertical orientation used by browser image data. The same affine presentation path supports raster images and normalized traced artwork. Native stroked paths accept non-singular similarity transforms, which preserve angles while scaling line width and dash lengths uniformly; non-uniform scale and shear fail explicitly because a scalar browser stroke cannot represent them faithfully after path coordinates are flattened into board space.
 
 ## Factory Fixture
 
-`generator/test/fixtures/minimal/minimal-freeform.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused unit tests cover raster resources, both soft-mask boundaries, vector tracing, structural game-link classification, scene validation, and mixed source order.
+`generator/test/fixtures/minimal/minimal-freeform.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused tests cover raster resources, soft-mask boundaries, vector tracing, structural game-link classification, graphics state, browser stroke attributes, affine scene validation and runtime placement, and mixed source order.
 
 The fixture does not broaden the support claim beyond Apple Freeform exports. New parser behavior still requires evidence from a real consumer source.
 
@@ -84,7 +86,8 @@ The following valid PDF features are not yet generalized:
 - inherited page resources;
 - Form XObjects;
 - Indexed, four-component ICC, color-managed ICC transforms, or other complex image color spaces and decode arrays;
-- line cap, line join, miter, and dash graphics state;
+- line cap and line join graphics state;
+- non-uniform scale or shear applied when a native path is stroked;
 - PDF font encoding, embedded fonts, glyph widths, and `ToUnicode` handling;
 - separate stroke and fill alpha values;
 - internal destinations and non-URI annotation actions.
