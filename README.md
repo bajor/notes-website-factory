@@ -39,7 +39,7 @@ See the [Apple Freeform PDF support profile](docs/pdf-investigation.md) for the 
 
 A consumer repository needs:
 
-- exactly one non-symlink PDF discovered recursively outside ignored build and dependency directories;
+- exactly one non-symlink PDF discovered recursively outside `.git`, `build`, `dist`, `dist.building`, `dist.previous`, `dist-newstyle`, and `node_modules` directories;
 - exactly one page in that PDF;
 - a non-empty `site-title` without control characters;
 - GitHub Pages configured with **GitHub Actions** as its source.
@@ -51,7 +51,7 @@ Other files may remain in the consumer repository. The reusable workflow needs o
 1. Export one supported Freeform board as a PDF and add it to a consumer repository.
 2. In the consumer repository, open **Settings > Pages** and select **GitHub Actions** as the source.
 3. Create `.github/workflows/pages.yml` with the workflow below.
-4. Replace `My Notes` with the browser title for the board.
+4. Replace `My Notes` with the browser title and accessible viewer name for the board.
 5. Open a pull request to test the build without deploying. Merge to `main` to deploy.
 
 ```yaml
@@ -131,7 +131,7 @@ make evaluate \
   SITE_TITLE='My Notes'
 ```
 
-`SOURCE` must satisfy the PDF requirements above. `TEMPLATES` defaults to this repository's `site/` directory. `DIST`, its staging and backup paths, and `REPORT` must be non-symlink paths that do not overlap the source, templates, or each other.
+`SOURCE` must satisfy the PDF requirements above. `TEMPLATES` defaults to this repository's `site/` directory. `DIST`, its staging and backup paths, and `REPORT` must be non-symlink paths that do not overlap the source, templates, or each other. `make evaluate` also reserves `build/runtime-test`; do not overlap that path with `SOURCE`, `TEMPLATES`, `DIST`, or `REPORT`, and do not make `build` or `build/runtime-test` symlinks.
 
 ## Documentation
 

@@ -9,7 +9,7 @@ Before changing parser, workflow, rendering, or product behavior, read:
 - `docs/constitution.md` for foundational constraints;
 - `docs/architecture.md` for boundaries, data flow, and public contracts;
 - `docs/pdf-investigation.md` for the supported export profile;
-- the current PRD, ADR, BDR, and issue linked from `docs/index.md`.
+- every relevant accepted PRD, ADR, and BDR, plus linked implementation issues, reached through `docs/index.md`.
 
 ## Living Docs
 
@@ -74,6 +74,7 @@ Do not copy detailed requirements, decisions, test scenarios, thresholds, or mod
 | Documentation only | Check links, commands, public names, and consistency with executable configuration. |
 | Any implementation | Run focused tests and `make test`. |
 | Parser, geometry, rendering, asset, style, template, or browser runtime | Run `make test` and `make evaluate`; inspect `build/evaluation/report.html`. |
+| Parser support | Validate the real consumer PDF that motivated the change and record the evidence. |
 | Reusable workflow boundary | Exercise isolated consumer and factory paths through the reusable workflow. |
 | Consumer migration | Run the reusable workflow against the real consumer and validate its deployment separately. |
 
