@@ -8,3 +8,4 @@
 - [BDR 0006: Expanded Freeform graphics output](/bdr/0006-expanded-freeform-graphics-output.md) - Accepted. Preserve observed path graphics state and affine artwork in browser SVG.
 - [BDR 0007: Tiled visual evaluation](/bdr/0007-tiled-visual-evaluation.md) - Accepted. Preserve fixed visual gates for boards beyond one Chromium viewport.
 - [BDR 0008: Fixed light viewer](/bdr/0008-fixed-light-viewer.md) - Accepted. Prevent browser theme adaptation from changing generated colors.
+- [BDR 0006: Topic index navigation](/bdr/0006-topic-index-navigation.md) - Accepted. Define framed-heading recognition, responsive controls, and target navigation.

@@ -1,7 +1,7 @@
 ---
 type: Architecture View
 title: Notes website factory architecture
-description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
+description: Repository ownership, reusable workflow, topic recognition, module boundaries, and evaluation flow.
 timestamp: 2026-08-29
 ---
 # Architecture
@@ -19,6 +19,7 @@ flowchart LR
   subgraph Factory[Notes Website Factory]
     Workflow[Reusable build workflow]
     Generator[Haskell generator]
+    TopicTools[Poppler crops and Tesseract]
     Viewer[Shared viewer templates]
     Oracle[Visual evaluator]
   end
@@ -30,6 +31,7 @@ flowchart LR
   Caller --> Workflow
   PDF --> Workflow
   Workflow --> Generator
+  Generator --> TopicTools
   Viewer --> Generator
   Generator --> Oracle
   Oracle --> PagesArtifact
@@ -48,6 +50,7 @@ sequenceDiagram
   participant S as source/
   participant F as factory/
   participant G as Haskell generator
+  participant O as Topic recognition tools
   participant E as Evaluator
   participant A as Artifact store
 
@@ -57,6 +60,8 @@ sequenceDiagram
   W->>G: Test factory fixture
   W->>G: Inspect source only
   G->>S: Discover exactly one PDF
+  G->>O: Render and recognize bounded topic crops
+  O-->>G: Best-effort English labels
   G->>F: Read shared templates
   G-->>W: Validated static site
   W->>E: Compare Poppler and Chromium at 18 and 72 DPI
@@ -85,6 +90,10 @@ flowchart TD
   Vector[Trace normalized SVG contours]
   Reject[Typed unsupported-image failure]
   Links[Extract URI annotations]
+  Frame{Thick chromatic frame}
+  Crop[Render bounded interior crop]
+  OCR[English Tesseract label]
+  Topic[Board-space topic metadata]
   Target{Classify link target}
   YouTube[YouTube activation button]
   Game[Algo Arcade anchor and badge]
@@ -95,9 +104,11 @@ flowchart TD
   Valid[Scene Validated]
   Emit[Static JavaScript scene and assets]
   Affine[Affine image presentation matrix]
-  Browser[Inline SVG, DOM overlays, shared controls]
+  Browser[Inline SVG, DOM overlays, Topics, and Fit]
 
   Input --> Parse --> Mask
+  Parse --> Frame
+  Frame -->|yes| Crop --> OCR --> Topic
   Parse --> Links --> Target
   Mask -->|absent| Raster
   Mask -->|empty| Reject
@@ -118,10 +129,11 @@ flowchart TD
   YouTube --> Raw
   Game --> Raw
   External --> Raw
+  Topic --> Raw
   Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The production path never renders a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Poppler exists only in the independent evaluation path. Oversized evaluation scales use bounded Chromium viewports that `Factory.Evaluation` stitches before applying the same complete-image comparison. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
+The production path never renders or ships a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Topic recognition detects relative frame geometry from decoded source pixels, asks Poppler for only each accepted interior, and removes every crop before promotion. Tesseract labels remain normal-mode interaction metadata and never replace source pixels. Oversized evaluation scales use bounded Chromium viewports that `Factory.Evaluation` stitches before applying the same complete-image comparison. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
 
 ## Module Boundaries
 
@@ -131,6 +143,8 @@ The production path never renders a full-page PDF image. Low-alpha content that 
 | `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission | None |
 | `Factory.Vectorize` | Image classification, quantization, contour tracing, and simplification | None |
+| `Factory.Topic` | Highlighter-frame detection, board-space ordering, crop preparation, and label normalization | None |
+| `Factory.Ocr` | Bounded Poppler crop and local Tesseract process execution | Processes and temporary crop output |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster materialization | File input and asset output |
 | `Factory.Site` | Scene validation, metadata rendering, and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
@@ -150,13 +164,17 @@ The production path never renders a full-page PDF image. Low-alpha content that 
 8. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
 9. A game target requires HTTPS, the exact case-insensitive host `bajor.github.io`, no credentials or explicit port, path `/algo-arcade/`, and a non-empty `#/games/` fragment route. Matching never uses substring checks.
 10. The game badge appears only in normal interactive mode; evaluation mode retains the native link hit area but draws only PDF-derived pixels.
+11. Topic detection uses relative chroma and border geometry before vectorization; it cannot depend on a consumer hue, resource name, board dimension, or expected count.
+12. Topic crop paths remain inside removable staging space, are removed before promotion, and cannot enter the Pages artifact.
+13. Poppler or Tesseract process failure aborts the build; successful empty OCR receives a deterministic non-source fallback label.
 
 ## Determinism and Compatibility
 
 - PDF resources, classification, contours, and generated JSON remain deterministically ordered.
 - The dependency solver, GHC, Cabal, and third-party actions are pinned.
 - Poppler and Chrome revisions can change antialiasing, so fixed tolerances replace exact pixel equality.
+- Topic order depends only on board coordinates; OCR output cannot reorder navigation targets.
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured fraction boundaries and game-link trust boundary. [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) owns low-alpha raster preservation. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, [BDR 0005](/bdr/0005-fidelity-preserving-mixed-scene-output.md) owns source-independent mixed rendering and typed-link behavior, and [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md) owns the additional observed graphics state and affine image behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured fraction boundaries and game-link trust boundary. [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) owns low-alpha raster preservation. [ADR 0006](/adr/0006-build-time-topic-ocr.md) owns build-time topic recognition. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, [BDR 0005](/bdr/0005-fidelity-preserving-mixed-scene-output.md) owns source-independent mixed rendering and typed-link behavior, [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md) owns additional graphics state and affine image behavior, and [BDR 0006](/bdr/0006-topic-index-navigation.md) owns topic controls and navigation.

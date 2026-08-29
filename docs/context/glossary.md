@@ -1,8 +1,8 @@
 ---
 type: Context
 title: Project glossary
-description: Definitions for PDF rendering, workflow reuse, artifacts, and evaluation.
-timestamp: 2026-08-28
+description: Definitions for PDF rendering, topic navigation, workflow reuse, artifacts, and evaluation.
+timestamp: 2026-08-29
 ---
 # Glossary
 
@@ -57,6 +57,18 @@ The non-interactive browser rendering mode selected by the evaluator at a specif
 ## Evaluation Oracle
 
 Poppler's development-only rendering of the source PDF, used as an independent visual reference for Chromium output.
+
+## Topic Frame
+
+A closed, thick, chromatic border detected from a Freeform image XObject before vectorization. Its inner rectangle supplies an OCR crop, and its outer board-space rectangle supplies a navigation target.
+
+## Topic Index
+
+The normal-mode `Topics` disclosure whose labels come from build-time OCR and whose actions navigate to stored topic-frame bounds. It is interaction metadata rather than reconstructed source content.
+
+## OCR
+
+Optical character recognition. The factory runs local English Tesseract on bounded topic crops during the build; no OCR engine or source crop enters the generated site.
 
 ## Factory Repository
 
