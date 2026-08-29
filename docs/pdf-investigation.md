@@ -99,7 +99,7 @@ Unsupported operators fail with a typed error. Some unsupported structures have 
 
 ## Evaluation Oracle
 
-Poppler's `pdftoppm` renders reference PNGs at 18 and 72 DPI only for development evaluation. Headless Chromium renders the generated site at matching dimensions. `Factory.Evaluation` checks browser readiness, compares every pixel, measures total ink, and writes:
+Poppler's `pdftoppm` renders reference PNGs at 18 and 72 DPI only for development evaluation. Headless Chromium renders the generated site at matching dimensions. Output beyond the bounded Chromium viewport is captured as deterministic tiles and stitched before comparison. `Factory.Evaluation` checks browser readiness, compares every pixel, measures total ink, and writes:
 
 ```text
 build/evaluation/

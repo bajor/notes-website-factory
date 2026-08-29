@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-08-28
+timestamp: 2026-08-29
 ---
 # Architecture
 
@@ -60,6 +60,7 @@ sequenceDiagram
   G->>F: Read shared templates
   G-->>W: Validated static site
   W->>E: Compare Poppler and Chromium at 18 and 72 DPI
+  E->>E: Capture bounded tiles and stitch oversized scales
   E-->>A: pdf-site-evaluation
   alt every scale passes
     W-->>A: github-pages
@@ -120,7 +121,7 @@ flowchart TD
   Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The production path never renders a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Poppler exists only in the independent evaluation path. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
+The production path never renders a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Poppler exists only in the independent evaluation path. Oversized evaluation scales use bounded Chromium viewports that `Factory.Evaluation` stitches before applying the same complete-image comparison. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
 
 ## Module Boundaries
 
@@ -132,9 +133,9 @@ The production path never renders a full-page PDF image. Low-alpha content that 
 | `Factory.Vectorize` | Image classification, quantization, contour tracing, and simplification | None |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster materialization | File input and asset output |
 | `Factory.Site` | Scene validation, metadata rendering, and deterministic site emission | Template and site output |
-| `Factory.Evaluation` | Poppler/Chromium execution, metrics, images, and reports | Processes and report output |
+| `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
 | `Factory.Pipeline` | CLI dispatch, discovery, protected paths, staging, and promotion | Filesystem orchestration |
-| `site/runtime.js` | Shared affine rendering, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
+| `site/runtime.js` | Shared affine rendering, evaluation-tile offsets, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
 | `build-pdf-site.yml` | Isolated checkouts, toolchain, evaluation, and artifact upload | GitHub Actions |
 
 ## Safety Boundaries
