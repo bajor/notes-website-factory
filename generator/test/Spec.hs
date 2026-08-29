@@ -6,7 +6,7 @@ module Main (main) where
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
 import Data.Aeson (Value (Object, String), toJSON)
 import Factory.Domain
-import Factory.Evaluation (EvaluationResult (evaluationPassed), calculateDifference)
+import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), calculateDifference, captureTiles, stitchTiles)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
@@ -244,7 +244,33 @@ evaluationTests =
     "visual evaluation"
     [ testCase "a blank rendering fails against sparse reference ink" $
         evaluationPassed (calculateDifference sparseReference blankImage) @?= False
+    , testCase "in-bound output uses one capture tile" $
+        captureTiles 6051 3020 @?= [CaptureTile 0 0 6051 3020]
+    , testCase "oversized output uses bounded row-major tiles" $
+        captureTiles 24204 12080
+          @?= [ CaptureTile 0 0 8192 4096
+              , CaptureTile 8192 0 8192 4096
+              , CaptureTile 16384 0 7820 4096
+              , CaptureTile 0 4096 8192 4096
+              , CaptureTile 8192 4096 8192 4096
+              , CaptureTile 16384 4096 7820 4096
+              , CaptureTile 0 8192 8192 3888
+              , CaptureTile 8192 8192 8192 3888
+              , CaptureTile 16384 8192 7820 3888
+              ]
+    , testCase "stitching preserves the tile boundary pixels" $
+        case stitchTiles 8193 1 [(CaptureTile 0 0 8192 1, redTile), (CaptureTile 8192 0 1 1, blueTile)] of
+          Left message -> assertFailure (Text.unpack message)
+          Right image -> (pixelAt image 8191 0, pixelAt image 8192 0) @?= (PixelRGB8 255 0 0, PixelRGB8 0 0 255)
+    , testCase "stitching preserves the row boundary pixels" $
+        case stitchTiles 1 4097 [(CaptureTile 0 0 1 4096, redColumn), (CaptureTile 0 4096 1 1, blueTile)] of
+          Left message -> assertFailure (Text.unpack message)
+          Right image -> (pixelAt image 0 4095, pixelAt image 0 4096) @?= (PixelRGB8 255 0 0, PixelRGB8 0 0 255)
     ]
+  where
+    redTile = generateImage (\_ _ -> PixelRGB8 255 0 0) 8192 1
+    redColumn = generateImage (\_ _ -> PixelRGB8 255 0 0) 1 4096
+    blueTile = generateImage (\_ _ -> PixelRGB8 0 0 255) 1 1
 
 siteTests :: TestTree
 siteTests =

@@ -7,33 +7,51 @@
 -- screenshot of our generated DOM/SVG scene and keep the difference image
 -- as evidence for the next parser iteration.
 module Factory.Evaluation
-  ( EvaluationResult (..)
+  ( CaptureTile (..)
+  , EvaluationResult (..)
   , calculateDifference
+  , captureTiles
   , runVisualEvaluation
+  , stitchTiles
   ) where
 
 import Codec.Picture
-  ( Image (imageData, imageHeight, imageWidth)
+  ( DynamicImage
+  , Image (..)
   , PixelRGB8 (PixelRGB8)
   , convertRGB8
   , generateImage
   , readImage
   , writePng
   )
+import Control.Exception (IOException, try)
+import Control.Monad (forM_)
+import Control.Monad.Primitive (PrimMonad, PrimState)
+import Control.Monad.ST (runST)
 import Data.Aeson (encode, object, (.=))
 import Data.Text (Text)
 import Data.Word (Word8)
 import Factory.Domain (BuildError (EvaluationError))
-import Control.Exception (IOException, try)
 import System.Directory (createDirectoryIfMissing, doesPathExist, makeAbsolute, removePathForcibly)
 import System.Exit (ExitCode (ExitSuccess))
 import System.Environment (lookupEnv)
-import System.FilePath ((</>))
+import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.IO (IOMode (ReadMode), withBinaryFile)
 import System.Process (readProcessWithExitCode)
+import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Vector.Storable as Vector
+import qualified Data.Vector.Storable.Mutable as MutableVector
+
+data CaptureTile = CaptureTile
+  { captureX :: Int
+  , captureY :: Int
+  , captureWidth :: Int
+  , captureHeight :: Int
+  }
+  deriving stock (Eq, Show)
 
 data EvaluationResult = EvaluationResult
   { evaluationMeanError :: Double
@@ -63,19 +81,32 @@ maximumInkRatio = 1.15
 pixelTolerance :: Int
 pixelTolerance = 32
 
+maximumCaptureWidth :: Int
+maximumCaptureWidth = 8192
+
+maximumCaptureHeight :: Int
+maximumCaptureHeight = 4096
+
 runVisualEvaluation :: FilePath -> FilePath -> FilePath -> IO (Either BuildError EvaluationResult)
 runVisualEvaluation pdfPath siteDirectory reportDirectory = do
   reportExists <- doesPathExist reportDirectory
   if reportExists then removePathForcibly reportDirectory else pure ()
   createDirectoryIfMissing True reportDirectory
   absoluteSite <- makeAbsolute siteDirectory
-  evaluated <- traverse (evaluateScale pdfPath absoluteSite reportDirectory) referenceDpis
-  case sequence evaluated of
+  evaluated <- evaluateScales absoluteSite referenceDpis
+  case evaluated of
     Left buildError -> pure (Left buildError)
     Right scales -> do
       let result = aggregateResults scales
       writeReports reportDirectory scales result
       pure (Right result)
+  where
+    evaluateScales _ [] = pure (Right [])
+    evaluateScales absoluteSite (dpi : remaining) = do
+      evaluated <- evaluateScale pdfPath absoluteSite reportDirectory dpi
+      case evaluated of
+        Left buildError -> pure (Left buildError)
+        Right scale -> fmap (fmap (scale :)) (evaluateScales absoluteSite remaining)
 
 evaluateScale :: FilePath -> FilePath -> FilePath -> Int -> IO (Either BuildError ScaleEvaluation)
 evaluateScale pdfPath absoluteSite reportDirectory dpi = do
@@ -88,27 +119,58 @@ evaluateScale pdfPath absoluteSite reportDirectory dpi = do
   case referenceExit of
     Left message -> pure (Left (EvaluationError message))
     Right () -> do
-      reference <- readRgb referencePath
-      case reference of
+      referenceDimensions <- readPngDimensions referencePath
+      case referenceDimensions of
         Left message -> pure (Left (EvaluationError message))
-        Right referenceImage -> do
-          browserExit <- runBrowser absoluteSite generatedPath dpi (imageWidth referenceImage) (imageHeight referenceImage)
+        Right (width, height) -> do
+          browserExit <- runBrowser absoluteSite generatedPath dpi width height
           case browserExit of
             Left message -> pure (Left (EvaluationError message))
-            Right () -> fmap (ScaleEvaluation dpi) <$> compareImages referenceImage generatedPath differencePath
+            Right () -> fmap (ScaleEvaluation dpi) <$> compareImagePaths referencePath generatedPath differencePath
 
 runBrowser :: FilePath -> FilePath -> Int -> Int -> Int -> IO (Either Text ())
 runBrowser siteDirectory screenshotPath dpi width height = do
   browser <- maybe "chromium" id <$> lookupEnv "CHROMIUM"
-  renderedDom <- runToolOutput browser (browserArguments <> ["--dump-dom", pageUrl])
-  case renderedDom of
-    Left message -> pure (Left message)
-    Right html
-      | not ("data-ready=\"true\"" `Text.isInfixOf` html) -> pure (Left "chromium did not report a completed scene")
-      | otherwise -> runTool browser (browserArguments <> ["--screenshot=" <> screenshotPath, pageUrl])
+  case captureTiles width height of
+    [] -> pure (Left "browser capture dimensions must be positive")
+    tiles@(firstTile : _) -> do
+      renderedDom <- runToolOutput browser (browserArguments firstTile <> ["--dump-dom", pageUrl firstTile])
+      case renderedDom of
+        Left message -> pure (Left message)
+        Right html
+          | not ("data-ready=\"true\"" `Text.isInfixOf` html) -> pure (Left "chromium did not report a completed scene")
+          | [tile] <- tiles -> runTool browser (browserArguments tile <> ["--screenshot=" <> screenshotPath, pageUrl tile])
+          | otherwise -> captureAndStitch browser tiles
   where
-    pageUrl = "file://" <> siteDirectory </> "index.html" <> "?evaluation=" <> show dpi
-    browserArguments =
+    captureAndStitch browser tiles = do
+      createDirectoryIfMissing True tileDirectory
+      captured <- captureAll tiles
+      result <- case captured of
+        Left message -> pure (Left message)
+        Right () -> do
+          stitched <- stitchTileFiles width height [(tile, tilePath tile) | tile <- tiles]
+          case stitched of
+            Left message -> pure (Left message)
+            Right image -> writePngSafely screenshotPath image
+      removePathForcibly tileDirectory
+      pure result
+      where
+        captureAll [] = pure (Right ())
+        captureAll (tile : remaining) = do
+          result <- captureTile tile
+          case result of
+            Left message -> pure (Left message)
+            Right () -> captureAll remaining
+        captureTile tile = runTool browser (browserArguments tile <> ["--screenshot=" <> tilePath tile, pageUrl tile])
+    tileDirectory = takeDirectory screenshotPath </> ".capture-tiles"
+    tilePath tile = tileDirectory </> takeFileName screenshotPath <> ".tile-" <> show (captureX tile) <> "-" <> show (captureY tile) <> ".png"
+    pageUrl tile =
+      "file://"
+        <> siteDirectory </> "index.html"
+        <> "?evaluation=" <> show dpi
+        <> "&evaluation-x=" <> show (captureX tile)
+        <> "&evaluation-y=" <> show (captureY tile)
+    browserArguments tile =
       [ "--headless"
       , "--no-sandbox"
       , "--disable-gpu"
@@ -116,8 +178,64 @@ runBrowser siteDirectory screenshotPath dpi width height = do
       , "--allow-file-access-from-files"
       , "--virtual-time-budget=15000"
       , "--force-device-scale-factor=1"
-      , "--window-size=" <> show width <> "," <> show height
+      , "--window-size=" <> show (captureWidth tile) <> "," <> show (captureHeight tile)
       ]
+
+captureTiles :: Int -> Int -> [CaptureTile]
+captureTiles width height
+  | width <= 0 || height <= 0 = []
+  | otherwise =
+      [ CaptureTile x y (min maximumCaptureWidth (width - x)) (min maximumCaptureHeight (height - y))
+      | y <- [0, maximumCaptureHeight .. height - 1]
+      , x <- [0, maximumCaptureWidth .. width - 1]
+      ]
+
+stitchTiles :: Int -> Int -> [(CaptureTile, Image PixelRGB8)] -> Either Text (Image PixelRGB8)
+stitchTiles width height captures
+  | null expected = Left "stitched image dimensions must be positive"
+  | map fst captures /= expected = Left "captured tiles do not match the expected grid"
+  | any hasWrongDimensions captures = Left "captured tile dimensions do not match the tile plan"
+  | otherwise = Right $ runST $ do
+      destination <- MutableVector.new (width * height * 3)
+      forM_ captures $ \(tile, image) -> copyTile destination width tile image
+      pixels <- Vector.unsafeFreeze destination
+      pure (Image width height pixels)
+  where
+    expected = captureTiles width height
+    hasWrongDimensions (tile, image) = dimensions image /= (captureWidth tile, captureHeight tile)
+
+stitchTileFiles :: Int -> Int -> [(CaptureTile, FilePath)] -> IO (Either Text (Image PixelRGB8))
+stitchTileFiles width height captures
+  | map fst captures /= captureTiles width height = pure (Left "captured tiles do not match the expected grid")
+  | otherwise = do
+      destination <- MutableVector.new (width * height * 3)
+      copied <- copyCaptures destination captures
+      case copied of
+        Left message -> pure (Left message)
+        Right () -> do
+          pixels <- Vector.unsafeFreeze destination
+          pure (Right (Image width height pixels))
+  where
+    copyCaptures _ [] = pure (Right ())
+    copyCaptures destination ((tile, path) : remaining) = do
+      decoded <- readRgb path
+      case decoded of
+        Left message -> pure (Left message)
+        Right image
+          | dimensions image /= (captureWidth tile, captureHeight tile) -> pure (Left "captured tile dimensions do not match the tile plan")
+          | otherwise -> do
+              copyTile destination width tile image
+              copyCaptures destination remaining
+
+copyTile :: PrimMonad m => MutableVector.MVector (PrimState m) Word8 -> Int -> CaptureTile -> Image PixelRGB8 -> m ()
+copyTile destination outputWidth tile image =
+  forM_ [0 .. captureHeight tile - 1] $ \row ->
+    Vector.copy
+      (MutableVector.slice (destinationOffset row) rowLength destination)
+      (Vector.slice (row * rowLength) rowLength (imageData image))
+  where
+    rowLength = captureWidth tile * 3
+    destinationOffset row = ((captureY tile + row) * outputWidth + captureX tile) * 3
 
 runTool :: FilePath -> [String] -> IO (Either Text ())
 runTool command arguments = do
@@ -138,10 +256,56 @@ runToolOutput command arguments = do
 runProcess :: FilePath -> [String] -> IO (Either IOException (ExitCode, String, String))
 runProcess command arguments = try (readProcessWithExitCode command arguments "")
 
+readPngDimensions :: FilePath -> IO (Either Text (Int, Int))
+readPngDimensions path = do
+  header <- tryReadHeader path
+  pure $ case header of
+    Left exception -> Left (Text.pack (path <> " could not be read: " <> show exception))
+    Right bytes -> parsePngDimensions bytes
+
+tryReadHeader :: FilePath -> IO (Either IOException ByteString.ByteString)
+tryReadHeader path = try (withBinaryFile path ReadMode (`ByteString.hGet` 24))
+
+parsePngDimensions :: ByteString.ByteString -> Either Text (Int, Int)
+parsePngDimensions header
+  | ByteString.length header /= 24 = Left "PNG header is incomplete"
+  | ByteString.take 8 header /= ByteString.pack [137, 80, 78, 71, 13, 10, 26, 10] = Left "image does not have a PNG signature"
+  | ByteString.take 8 (ByteString.drop 8 header) /= ByteString.pack [0, 0, 0, 13, 73, 72, 68, 82] = Left "PNG does not start with an IHDR chunk"
+  | width <= 0 || height <= 0 = Left "PNG dimensions must be positive"
+  | otherwise = Right (width, height)
+  where
+    width = word32At 16
+    height = word32At 20
+    word32At offset =
+      fromIntegral (ByteString.index header offset) * 16777216
+        + fromIntegral (ByteString.index header (offset + 1)) * 65536
+        + fromIntegral (ByteString.index header (offset + 2)) * 256
+        + fromIntegral (ByteString.index header (offset + 3))
+
 readRgb :: FilePath -> IO (Either Text (Image PixelRGB8))
 readRgb path = do
-  decoded <- readImage path
-  pure (either (Left . Text.pack) (Right . convertRGB8) decoded)
+  decoded <- tryReadImage path
+  pure $ case decoded of
+    Left exception -> Left (Text.pack (path <> " could not be read: " <> show exception))
+    Right result -> either (Left . Text.pack) (Right . convertRGB8) result
+
+tryReadImage :: FilePath -> IO (Either IOException (Either String DynamicImage))
+tryReadImage = try . readImage
+
+writePngSafely :: FilePath -> Image PixelRGB8 -> IO (Either Text ())
+writePngSafely path image = do
+  written <- tryWritePng path image
+  pure (either (Left . Text.pack . show) Right written)
+
+tryWritePng :: FilePath -> Image PixelRGB8 -> IO (Either IOException ())
+tryWritePng path = try . writePng path
+
+compareImagePaths :: FilePath -> FilePath -> FilePath -> IO (Either BuildError EvaluationResult)
+compareImagePaths referencePath generatedPath differencePath = do
+  reference <- readRgb referencePath
+  case reference of
+    Left message -> pure (Left (EvaluationError message))
+    Right image -> compareImages image generatedPath differencePath
 
 compareImages :: Image PixelRGB8 -> FilePath -> FilePath -> IO (Either BuildError EvaluationResult)
 compareImages reference generatedPath differencePath = do

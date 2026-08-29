@@ -37,6 +37,7 @@ library
     , pdf-toolbox-core ==0.1.3
     , pdf-toolbox-document ==0.1.4
     , process
+    , primitive
     , scientific
     , text
     , unordered-containers

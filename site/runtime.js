@@ -3,8 +3,11 @@ import { scene } from './scene.generated.js';
 const viewport = document.querySelector('#viewport');
 const board = document.querySelector('#board');
 const status = document.querySelector('#status');
-const evaluationDpi = Number(new URLSearchParams(window.location.search).get('evaluation'));
+const query = new URLSearchParams(window.location.search);
+const evaluationDpi = Number(query.get('evaluation'));
 const evaluationMode = Number.isFinite(evaluationDpi) && evaluationDpi > 0;
+const evaluationX = Number(query.get('evaluation-x')) || 0;
+const evaluationY = Number(query.get('evaluation-y')) || 0;
 const svgNamespace = 'http://www.w3.org/2000/svg';
 
 const view = { scale: 1, x: 0, y: 0 };
@@ -24,6 +27,8 @@ async function initialize() {
       // PDF coordinates use 72 points per inch, so DPI / 72 gives the
       // matching browser scale for each evaluation resolution.
       view.scale = evaluationDpi / 72;
+      view.x = -evaluationX;
+      view.y = -evaluationY;
       applyView();
     } else {
       installControls();
