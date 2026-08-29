@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-08-24
+timestamp: 2026-08-28
 ---
 # Architecture
 
@@ -88,11 +88,12 @@ flowchart TD
   YouTube[YouTube activation button]
   Game[Algo Arcade anchor and badge]
   External[External anchor]
-  Interpret[Immutable graphics-state interpreter]
+  Interpret[Immutable graphics-state interpreter<br/>including named colors, miters, and dashes]
   Raw[Scene Unvalidated]
   Validate[validateScene]
   Valid[Scene Validated]
   Emit[Static JavaScript scene and assets]
+  Affine[Affine image presentation matrix]
   Browser[Inline SVG, DOM overlays, shared controls]
 
   Input --> Parse --> Mask
@@ -116,16 +117,16 @@ flowchart TD
   YouTube --> Raw
   Game --> Raw
   External --> Raw
-  Raw --> Validate --> Valid --> Emit --> Browser
+  Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The production path never renders a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. Poppler exists only in the independent evaluation path. Data-flow drift is caught by focused classification tests, real-consumer evaluation, and review of this diagram.
+The production path never renders a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Poppler exists only in the independent evaluation path. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
 
 ## Module Boundaries
 
 | Module | Responsibility | Effects |
 | --- | --- | --- |
-| `Factory.Domain` | Coordinates, matrices, nodes, typed link targets, assets, titles, validation phases, and errors | None |
+| `Factory.Domain` | Coordinates, matrices, color spaces, paint styles, nodes, typed link targets, assets, titles, validation phases, and errors | None |
 | `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission | None |
 | `Factory.Vectorize` | Image classification, quantization, contour tracing, and simplification | None |
@@ -133,7 +134,7 @@ The production path never renders a full-page PDF image. Low-alpha content that 
 | `Factory.Site` | Scene validation, metadata rendering, and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler/Chromium execution, metrics, images, and reports | Processes and report output |
 | `Factory.Pipeline` | CLI dispatch, discovery, protected paths, staging, and promotion | Filesystem orchestration |
-| `site/runtime.js` | Shared rendering, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
+| `site/runtime.js` | Shared affine rendering, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
 | `build-pdf-site.yml` | Isolated checkouts, toolchain, evaluation, and artifact upload | GitHub Actions |
 
 ## Safety Boundaries
@@ -141,7 +142,7 @@ The production path never renders a full-page PDF image. Low-alpha content that 
 1. `discoverSinglePdf` scans only the consumer source root and requires one non-symlink PDF.
 2. The parser requires exactly one page and fails on unsupported structures.
 3. `classifyImage` rejects empty and all-zero masks, preserves nonzero masks with no traceable sample, then applies the `0.01` raster boundary, the ambiguity interval, and the `0.02` vector boundary to traceable masks.
-4. `validateScene` checks dimensions, references, finite values, opacities, image transforms, and the full-board-raster prohibition.
+4. `validateScene` checks dimensions, references, finite values, paint values including miter limits and dash patterns, opacities, and the full-board-raster prohibition by testing every board corner against the transformed image bounds.
 5. Existing removable locations are canonicalized, while symlink targets and unresolved symlink parents are rejected; removable paths cannot overlap source, templates, or another independently owned output root.
 6. Output is written to `DIST.building` before atomic-style promotion through `DIST.previous`.
 7. Distribution checks require product files, relative references, no PDF, and no Canvas fallback without assuming scene counts.
@@ -157,4 +158,4 @@ The production path never renders a full-page PDF image. Low-alpha content that 
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured fraction boundaries and game-link trust boundary. [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) owns low-alpha raster preservation. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, and [BDR 0005](/bdr/0005-fidelity-preserving-mixed-scene-output.md) owns source-independent mixed rendering and typed-link behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured fraction boundaries and game-link trust boundary. [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) owns low-alpha raster preservation. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, [BDR 0005](/bdr/0005-fidelity-preserving-mixed-scene-output.md) owns source-independent mixed rendering and typed-link behavior, and [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md) owns the additional observed graphics state and affine image behavior.
