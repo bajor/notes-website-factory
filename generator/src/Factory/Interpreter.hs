@@ -329,9 +329,14 @@ setRgb isFill machine values = case traverse number values of
   _ -> Left (PdfStructureError "RGB operator expected three numbers")
 setCmyk :: Bool -> Machine -> [Object] -> Either BuildError Machine
 setCmyk isFill machine values = case traverse number values of
-  Right [cyan, magenta, yellow, black] ->
-    setColor isFill CmykColorSpace machine (Color (1 - min 1 (cyan + black)) (1 - min 1 (magenta + black)) (1 - min 1 (yellow + black)))
+  Right components@[cyan, magenta, yellow, black]
+    | all validColorComponent components ->
+        setColor isFill CmykColorSpace machine (Color (1 - min 1 (cyan + black)) (1 - min 1 (magenta + black)) (1 - min 1 (yellow + black)))
+    | otherwise -> Left (PdfStructureError "CMYK components must be between 0 and 1")
   _ -> Left (PdfStructureError "CMYK operator expected four numbers")
+
+validColorComponent :: Double -> Bool
+validColorComponent value = value >= 0 && value <= 1
 selectColorSpace :: Resources -> Bool -> Machine -> Object -> Either BuildError Machine
 selectColorSpace resources isFill machine value = do
   name <- maybe (Left (PdfStructureError "color-space operator expected a name")) Right (nameValue value)

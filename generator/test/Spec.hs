@@ -110,6 +110,9 @@ interpreterTests =
     , testCase "selecting an unsupported named color space fails explicitly" $
         interpretOperators pageHeight unsupportedColorResources [(Op_CS, [Name "PatternSpace"])]
           @?= Left (UnsupportedOperator "unsupported named color space: PatternSpace")
+    , testCase "out-of-range CMYK components fail before conversion" $
+        interpretOperators pageHeight emptyResources [operator Op_K [2, 0, 0, 0]]
+          @?= Left (PdfStructureError "CMYK components must be between 0 and 1")
     , testCase "PDF text fails until font decoding is supported" $
         interpretOperators pageHeight emptyResources [(Op_BT, [])]
           @?= Left (UnsupportedOperator "PDF text requires font decoding and metrics")
@@ -227,6 +230,12 @@ validationTests =
         case validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 100 100 100 0 0 0) 1 []]) of
           Right _ -> pure ()
           Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
+    , testCase "overflowing finite determinants retain full-board detection" $
+        validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 2e306 0 0 2e306 0 0) 1 []])
+          @?= Left (InvalidScene "a full-board raster image is not allowed")
+    , testCase "mixed-scale image axes retain full-board detection" $
+        validateScene (Scene (Coordinate 1e306) (Coordinate 1e-100) [testAsset] [ImageNode (assetId testAsset) (Matrix 1e306 0 0 1e-100 0 0) 1 []])
+          @?= Left (InvalidScene "a full-board raster image is not allowed")
     ]
 
 evaluationTests :: TestTree

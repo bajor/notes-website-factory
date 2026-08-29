@@ -14,6 +14,7 @@ module Factory.Site
 import Data.Aeson (encode, object, (.=))
 import Data.ByteString.Lazy (toStrict)
 import Data.List (nub)
+import Data.Ratio ((%))
 import Data.Set (Set)
 import Factory.Domain
 import System.Directory (copyFile, createDirectoryIfMissing)
@@ -169,22 +170,30 @@ pointIsFinite point = all (finite . unCoordinate) [pointX point, pointY point]
 
 imageCoversBoard :: Double -> Double -> SceneNode -> Bool
 imageCoversBoard boardWidth boardHeight (ImageNode _ matrix _ _) =
-  determinant /= 0 && all inside [(0, 0), (boardWidth, 0), (0, boardHeight), (boardWidth, boardHeight)]
+  determinant /= 0 && all inside [(0, 0), (width, 0), (0, height), (width, height)]
   where
-    determinant = matrixA matrix * matrixD matrix - matrixB matrix * matrixC matrix
+    a = toRational (matrixA matrix)
+    b = toRational (matrixB matrix)
+    c = toRational (matrixC matrix)
+    d = toRational (matrixD matrix)
+    e = toRational (matrixE matrix)
+    f = toRational (matrixF matrix)
+    width = toRational boardWidth
+    height = toRational boardHeight
+    determinant = a * d - b * c
     inside (x, y) =
-      let offsetX = x - matrixE matrix
-          offsetY = y - matrixF matrix
-          unitX = (matrixD matrix * offsetX - matrixC matrix * offsetY) / determinant
-          unitY = (matrixA matrix * offsetY - matrixB matrix * offsetX) / determinant
+      let offsetX = x - e
+          offsetY = y - f
+          unitX = (d * offsetX - c * offsetY) / determinant
+          unitY = (a * offsetY - b * offsetX) / determinant
        in unitX >= -coverageTolerance
             && unitX <= 1 + coverageTolerance
             && unitY >= -coverageTolerance
             && unitY <= 1 + coverageTolerance
 imageCoversBoard _ _ _ = False
 
-coverageTolerance :: Double
-coverageTolerance = 1e-9
+coverageTolerance :: Rational
+coverageTolerance = 1 % 1000000000
 
 countNodes :: (SceneNode -> Bool) -> Scene phase -> Int
 countNodes predicate = length . filter predicate . sceneNodes
