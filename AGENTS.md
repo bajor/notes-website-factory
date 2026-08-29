@@ -9,7 +9,7 @@ Before changing parser, workflow, rendering, or product behavior, read:
 - `docs/constitution.md` for foundational constraints;
 - `docs/architecture.md` for boundaries, data flow, and public contracts;
 - `docs/pdf-investigation.md` for the supported export profile;
-- every relevant accepted PRD, ADR, and BDR, plus linked implementation issues, reached through `docs/index.md`.
+- every relevant accepted PRD, ADR, and BDR, plus linked implementation issues, reached through `docs/index.md`. Resolve its `/...` links relative to the `docs/` bundle root.
 
 ## Living Docs
 
@@ -25,7 +25,7 @@ Every concept has one canonical home and remains reachable from `docs/index.md`.
 - Preserve source content without inventing text or geometry. Do not use optical character recognition or turn unsupported PDF text into DOM text.
 - Keep the generated product independent of the source PDF, full-page PDF rasters, browser PDF parsers, Canvas fallbacks, and a backend.
 - Fail when observed content cannot be represented safely; do not silently omit it or weaken validation.
-- Keep consumer input, factory source, templates, site output, and evaluation evidence in separately owned paths.
+- Keep consumer input, the factory checkout, site output, and evaluation evidence in separate roots. Templates remain factory-owned and protected from removable paths.
 - Never allow a removable output, staging, backup, scratch, or report path to overlap a protected root or another independently owned output root.
 - Keep behavior independent of consumer filenames, dimensions, resource names, scene counts, repository names, and complete content URLs.
 - Do not add Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, optical character recognition, or a backend as a project requirement.

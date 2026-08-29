@@ -72,7 +72,7 @@ jobs:
   build:
     permissions:
       contents: read
-    uses: bajor/notes-website-factory/.github/workflows/build-pdf-site.yml@main
+    uses: bajor/notes-website-factory-workflow/.github/workflows/build-pdf-site.yml@main
     with:
       site-title: My Notes
 
@@ -137,4 +137,3 @@ make evaluate \
 
 - [Architecture](docs/architecture.md): workflow, data flow, module ownership, and safety boundaries.
 - [Apple Freeform PDF support profile](docs/pdf-investigation.md): supported parsing behavior, evidence, and limitations.
-- [Documentation index](docs/index.md): product requirements, decisions, behavior records, implementation issues, and vocabulary.
