@@ -29,7 +29,6 @@ body,
   left: 0;
   transform-origin: 0 0;
   background: white;
-  will-change: transform;
 }
 
 .scene-layer,
