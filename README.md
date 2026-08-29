@@ -1,31 +1,58 @@
 # Notes Website Factory
 
-This repository provides a reusable GitHub Actions workflow that converts one-page Apple Freeform PDFs into responsive, zoomable static websites. Consumer repositories provide one PDF and a site title. The factory owns the Haskell parser, shared viewer, visual evaluation, and Pages artifact production.
+Notes Website Factory turns a one-page Apple Freeform PDF into a responsive, zoomable static website. A consumer repository supplies the PDF, a site title, and a GitHub Actions caller workflow. This repository supplies the Haskell generator, shared viewer, visual evaluation, and deployable Pages artifact.
 
-The deployed browser never downloads or parses the PDF. It receives JavaScript scene data, inline SVG artwork, DOM overlays, and extracted raster assets. Poppler and Chromium are development or CI evaluation tools, not runtime dependencies.
+The generated site renders scene data, inline SVG artwork, links, and extracted raster assets. It does not ship or parse the source PDF in the browser.
 
-## Consumer Contract
+## What You Can Use It For
 
-A consumer repository must contain exactly one non-symlink PDF. The PDF must contain exactly one page and use the supported Apple Freeform export profile documented in [`docs/pdf-investigation.md`](docs/pdf-investigation.md).
+- Publish a one-page Freeform board as a website without maintaining a backend.
+- Share visual study notes, diagrams, or mixed screenshot-and-handwriting boards with zoom and pan controls.
+- Rebuild and visually validate the site whenever the source PDF changes.
+- Keep source content and deployment policy in a separate repository while reusing one build pipeline.
 
-The caller supplies one required workflow input:
+This is not a general-purpose PDF converter, document editor, or optical character recognition tool.
 
-| Input | Meaning |
-| --- | --- |
-| `site-title` | Non-empty browser title. The factory also derives the viewer's accessible name from it. |
+## Pros and Cons
 
-The reusable workflow produces two artifacts:
+### Pros
 
-| Artifact | Meaning |
-| --- | --- |
-| `github-pages` | Validated static website ready for `actions/deploy-pages`. |
-| `pdf-site-evaluation` | Poppler references, Chromium screenshots, difference images, metrics, and `report.html`. |
+- Produces static files that can be hosted under any GitHub Pages project path.
+- Validates the generated page against Poppler reference renders before publishing it.
+- Preserves screenshots as raster images and traces supported Freeform artwork into scalable SVG.
+- Supports mouse, touch, keyboard, fit-to-screen, zoom, pan, and fullscreen interactions.
+- Keeps deployment credentials and policy out of the reusable build workflow.
+- Fails the build instead of publishing a Pages artifact when parsing, validation, or visual evaluation fails.
 
-The workflow intentionally does not deploy. Each consumer owns its branch trigger, permissions, environment protection, concurrency, and Pages deployment.
+### Cons
 
-## Consumer Workflow
+- Accepts one-page PDFs from the documented Apple Freeform export profile, not arbitrary PDFs.
+- Does not recover editable Freeform objects or semantic handwriting. SVG tracing is deterministic but lossy.
+- Does not support PDF text, page rotation, general image transforms, or several valid PDF structures.
+- Documents outside the supported profile are not guaranteed to build or render correctly.
+- The hosted setup targets GitHub Actions and GitHub Pages. Other deployment systems require a separate integration.
+- Referencing the workflow at `@main` picks up future factory changes; pin a full commit SHA when immutable behavior is required.
 
-Configure the consumer repository's Pages source as **GitHub Actions**, then create `.github/workflows/pages.yml`:
+See the [Apple Freeform PDF support profile](docs/pdf-investigation.md) for the exact supported features and limitations.
+
+## Requirements
+
+A consumer repository needs:
+
+- exactly one non-symlink PDF discovered recursively outside `.git`, `build`, `dist`, `dist.building`, `dist.previous`, `dist-newstyle`, and `node_modules` directories;
+- exactly one page in that PDF;
+- a non-empty `site-title` without control characters;
+- GitHub Pages configured with **GitHub Actions** as its source.
+
+Other files may remain in the consumer repository. The reusable workflow needs only `contents: read`; the consumer's deployment job owns Pages and OpenID Connect permissions.
+
+## How to Use It
+
+1. Export one supported Freeform board as a PDF and add it to a consumer repository.
+2. In the consumer repository, open **Settings > Pages** and select **GitHub Actions** as the source.
+3. Create `.github/workflows/pages.yml` with the workflow below.
+4. Replace `My Notes` with the browser title and accessible viewer name for the board.
+5. Open a pull request to test the build without deploying. Merge to `main` to deploy.
 
 ```yaml
 name: Publish Notes
@@ -45,7 +72,7 @@ jobs:
   build:
     permissions:
       contents: read
-    uses: bajor/notes-website-factory/.github/workflows/build-pdf-site.yml@main
+    uses: bajor/notes-website-factory-workflow/.github/workflows/build-pdf-site.yml@main
     with:
       site-title: My Notes
 
@@ -65,60 +92,36 @@ jobs:
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 ```
 
-Pull requests build and evaluate the site without deploying. A push to `main`, including a merged pull request, deploys only after the reusable build succeeds.
+The workflow at `@main` can change between runs. Within each run, `job.workflow_sha` keeps the workflow and checked-out factory implementation on the same commit. Replace `main` with a full factory commit SHA to pin behavior.
 
-The example intentionally references `@main`. This makes every new run use the latest factory commit. The workflow checks out its implementation through `job.workflow_sha`, so a run always uses generator source from the exact commit that supplied the workflow file. Consumers that require immutable behavior may replace `main` with a full commit SHA.
+## Outputs
 
-## Input Scope
+On success, the reusable workflow uploads:
 
-The workflow is reusable across different board dimensions, filenames, repositories, resource names, and mixed-scene counts. It does not assume a specific page title, URL, number of images, or number of vector nodes.
+| Artifact | Contents |
+| --- | --- |
+| `github-pages` | The validated static site, ready for `actions/deploy-pages`. |
+| `pdf-site-evaluation` | Reference renders, browser renders, difference images, metrics, and `report.html`. |
 
-The parser remains intentionally limited to the observed Apple Freeform profile:
+The reusable workflow does not deploy either artifact. If evaluation fails, it withholds `github-pages` and uploads available evaluation evidence when possible.
 
-- unrotated pages with matching zero-origin MediaBox and CropBox;
-- JPEG and 8-bit Flate image XObjects, including Flate soft masks and lossless raster preservation for nonzero samples below the vector tracing cutoff;
-- axis-aligned image transforms;
-- clipping paths, common color operators, and Freeform opacity resources;
-- HTTP and HTTPS URI annotations, including supported YouTube URLs and exact HTTPS Algo Arcade game routes;
-- no PDF text until font decoding and metrics are implemented.
+The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when the board contains raster assets. YouTube links activate privacy-enhanced embeds; supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
 
-Unsupported operators or structures fail explicitly. A caller never receives a partially rendered Pages artifact.
+## Local Use
 
-## Generated Product
+The CI-supported toolchain uses GHC 9.6.6, Cabal 3.10.3.0, `zlib1g-dev`, Poppler, and a Chromium-compatible browser. Python 3 is needed only for the local server.
 
-The `github-pages` artifact contains:
-
-```text
-site/
-|-- assets/                 # Present only when raster assets are required.
-|-- index.html
-|-- runtime.js
-|-- scene.generated.js
-|-- scene-summary.json
-`-- styles.css
-```
-
-The product contains no PDF, OCR output, full-page PDF raster, Canvas fallback, browser PDF parser, backend, Rust bundle, TypeScript bundle, or Node dependency. Relative resource references allow deployment under any GitHub Pages project path. YouTube annotations activate privacy-enhanced video embeds. An annotation matching `https://bajor.github.io/algo-arcade/#/games/<game>` remains a native new-tab link and receives a gamepad badge in the interactive viewer.
-
-## Local Development
-
-Required versions:
-
-- GHC 9.6.6;
-- Cabal 3.10.3.0;
-- `zlib1g-dev`;
-- Poppler and Chromium for visual evaluation;
-- Python 3 only for `make serve`.
-
-Run the factory's synthetic one-page fixture:
+Run the synthetic fixture:
 
 ```bash
-make test
-make evaluate
-make serve
+make test      # Compile, run unit tests, inspect the fixture, and validate a build.
+make evaluate  # Build, compare browser and PDF renders, and test the browser runtime.
+make serve     # Build and serve the site at http://localhost:8000.
 ```
 
-Build another supported source directory explicitly:
+`make evaluate` does not run the unit-test suite, so run both `make test` and `make evaluate` when validating implementation changes.
+
+Evaluate another source directory:
 
 ```bash
 make evaluate \
@@ -128,36 +131,9 @@ make evaluate \
   SITE_TITLE='My Notes'
 ```
 
-`SOURCE` must contain exactly one PDF. `TEMPLATES` defaults to this repository's `site/` directory. Output and evaluation paths must be non-symlink, non-overlapping paths outside the source and templates; the factory validates them before any removable directory is reset.
+`SOURCE` must satisfy the PDF requirements above. `TEMPLATES` defaults to this repository's `site/` directory. `DIST`, its staging and backup paths, and `REPORT` must be non-symlink paths that do not overlap the source, templates, or each other. `make evaluate` also reserves `build/runtime-test`; do not overlap that path with `SOURCE`, `TEMPLATES`, `DIST`, or `REPORT`, and do not make `build` or `build/runtime-test` symlinks.
 
-## Quality Gates
+## Documentation
 
-`make test` compiles with warnings as errors, runs focused unit tests, parses the synthetic fixture, builds a generic vector-only site, and validates its distribution. `make evaluate` additionally compares Poppler and Chromium at 18 and 72 DPI and runs a synthetic link-runtime smoke test. Evaluation mode omits the synthesized gamepad badge so the comparison measures PDF-derived content only.
-
-The evaluator requires:
-
-- mean normalized channel error at most `0.02`;
-- at least `0.96` of pixels within per-channel tolerance;
-- generated/reference ink ratio from `0.85` through `1.15`;
-- a browser DOM marked `data-ready="true"` after assets and fonts load.
-
-Factory CI invokes the reusable workflow against the fixture. This tests the same isolated consumer/factory checkout topology used by external repositories.
-
-## Code Map
-
-1. `Factory.Domain` owns shared types and invalid-state prevention.
-2. `Factory.Geometry` owns coordinate and affine matrix math.
-3. `Factory.Interpreter` owns the immutable PDF operator state machine.
-4. `Factory.Vectorize` owns image classification and contour tracing.
-5. `Factory.Pdf` owns the `pdf-toolbox` boundary and asset materialization.
-6. `Factory.Site` validates scenes and emits the static product.
-7. `Factory.Pipeline` separates source, template, output, and report paths.
-8. `Factory.Evaluation` owns the Poppler/Chromium comparison.
-9. `site/` owns the shared responsive viewer.
-10. `.github/workflows/build-pdf-site.yml` owns reusable orchestration and artifact upload.
-
-[`docs/index.md`](docs/index.md) indexes the architecture, supported profile, requirements, decisions, behavior records, and implementation issues.
-
-## Acceptance Criteria
-
-The factory is healthy when `make test` and `make evaluate` pass, CI proves the reusable workflow against the fixture, supported consumer PDFs produce visually validated Pages artifacts, recognized game links expose an accessible click affordance on desktop and mobile, unsupported input fails explicitly, and no consumer-specific content or deployment policy is required by the factory.
+- [Architecture](docs/architecture.md): workflow, data flow, module ownership, and safety boundaries.
+- [Apple Freeform PDF support profile](docs/pdf-investigation.md): supported parsing behavior, evidence, and limitations.

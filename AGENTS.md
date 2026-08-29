@@ -1,105 +1,85 @@
 # Agent Guide
 
-## Purpose
+## Scope
 
-Maintain a reusable Haskell software factory that converts a consumer repository's one-page Apple Freeform PDF into a validated, zoomable static-site artifact. Consumers own their PDF, title, workflow trigger, and deployment. The factory owns parsing, rendering, evaluation, shared templates, and artifact production.
+Maintain the reusable factory that converts a consumer repository's one-page Apple Freeform PDF into a validated static-site artifact. Keep public usage in `README.md`, architecture and module ownership in `docs/architecture.md`, and parser support in `docs/pdf-investigation.md`; link to those files instead of duplicating their facts here.
+
+Before changing parser, workflow, rendering, or product behavior, read:
+
+- `docs/constitution.md` for foundational constraints;
+- `docs/architecture.md` for boundaries, data flow, and public contracts;
+- `docs/pdf-investigation.md` for the supported export profile;
+- every relevant accepted PRD, ADR, and BDR, plus linked implementation issues, reached through `docs/index.md`. Resolve its `/...` links relative to the `docs/` bundle root.
 
 ## Living Docs
 
 enforcement: strict
 onboarded: 2026-08-20
 
-## Non-Negotiable Invariants
+Every concept has one canonical home and remains reachable from `docs/index.md`. Supersede accepted decisions and requirements instead of rewriting their history.
 
-- A consumer source contains exactly one non-symlink PDF with exactly one page.
-- The factory repository contains no production notes PDF; its only PDF is the synthetic integration fixture.
-- Production parsing is Haskell using `pdf-toolbox` plus project-owned interpretation and validation.
-- The reusable workflow accepts a validated site title and emits artifacts without deploying them.
-- Consumer input, factory source, site output, and evaluation evidence use separate paths.
-- Generated sites contain no PDF, full-page PDF raster, OCR output, Canvas fallback, or browser PDF parser.
-- Traceable, substantially transparent Freeform artwork becomes inline SVG. Opaque, near-opaque, and nonzero low-alpha content that the tracer cannot represent stay raster. Ambiguous soft masks fail explicitly.
-- Exact HTTPS Algo Arcade game-route annotations become typed game links with an interactive gamepad badge; other HTTP or HTTPS URLs retain their existing behavior.
-- Only genuine supported PDF text operators may become DOM text.
-- The shared viewer is factory-owned and supports desktop and mobile interactions.
-- The project must not require Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, OCR, or a backend.
-- Poppler and Chromium are development and CI evaluation tools only.
-- Unsupported content fails explicitly rather than disappearing silently.
-- Never allow a removable output, staging, backup, scratch, or report path to overlap a protected input root or another independently owned output root.
+## Guardrails
 
-## Required Workflow
+- Keep production notes PDFs in consumer repositories. The factory contains only synthetic test fixtures.
+- Keep production parsing in Haskell with `pdf-toolbox` and project-owned interpretation and validation.
+- Preserve source content without inventing text or geometry. Do not use optical character recognition or turn unsupported PDF text into DOM text.
+- Keep the generated product independent of the source PDF, full-page PDF rasters, browser PDF parsers, Canvas fallbacks, and a backend.
+- Fail when observed content cannot be represented safely; do not silently omit it or weaken validation.
+- Keep consumer input, the factory checkout, site output, and evaluation evidence in separate roots. Templates remain factory-owned and protected from removable paths.
+- Never allow a removable output, staging, backup, scratch, or report path to overlap a protected root or another independently owned output root.
+- Keep behavior independent of consumer filenames, dimensions, resource names, scene counts, repository names, and complete content URLs.
+- Do not add Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, optical character recognition, or a backend as a project requirement.
+- Keep Poppler and Chromium in development and CI evaluation only.
 
-1. Read `README.md`, `docs/architecture.md`, and `docs/pdf-investigation.md` before changing parser or workflow behavior.
-2. Inspect the existing domain and interpreter before adding a type or operator.
-3. Make the smallest change supported by a real consumer PDF observation or focused failing test.
-4. Keep deterministic transformations pure. Put filesystem and process effects at module boundaries.
-5. Add one focused unit test for each new pure behavior. Do not duplicate assertions or use real I/O in unit tests.
-6. Run `make test` after every implementation change.
-7. Run `make evaluate` after any parser, geometry, rendering, asset, style, template, or browser-runtime change.
-8. Inspect `build/evaluation/report.html`, not only the process exit code.
-9. Exercise consumer paths separately from factory templates for workflow-boundary changes.
-10. Update the supported profile and limitations in `docs/pdf-investigation.md` when behavior changes.
-11. Update the indexed PRD, ADR, BDR, issue, glossary, and architecture view required by the strict living-docs policy.
+## Architecture and Compatibility
 
-## Module Ownership
+- Respect the module boundaries in `docs/architecture.md`. Moving ownership or changing data flow requires an architecture update and a PR-only SVG in `visual-explanations/`.
+- Treat the workflow inputs, artifact names, generated filenames, and behavior documented in `README.md` and `.github/workflows/build-pdf-site.yml` as stable public interfaces.
+- Make new workflow inputs optional unless every known consumer is migrated in the same coordinated change.
+- Keep factory checkout pinned to `job.workflow_sha` within each workflow run.
+- Do not grant the reusable build workflow Pages write or OpenID Connect token permissions.
+- Do not widen provider-specific URL trust boundaries without documented consumer evidence and the required PRD, ADR, BDR, and tests.
 
-- `generator/src/Factory/Domain.hs`: shared vocabulary and invalid-state prevention.
-- `generator/src/Factory/Geometry.hs`: authoritative coordinate and matrix math.
-- `generator/src/Factory/Interpreter.hs`: pure PDF operator state machine.
-- `generator/src/Factory/Vectorize.hs`: pure image classification, quantization, contour tracing, and simplification.
-- `generator/src/Factory/Pdf.hs`: `pdf-toolbox` boundary, stream decoding, resource preparation, raster materialization, annotations, and structural URL classification.
-- `generator/src/Factory/Site.hs`: scene validation, metadata rendering, and deterministic product emission.
-- `generator/src/Factory/Evaluation.hs`: Poppler/Chromium feedback loop and thresholds.
-- `generator/src/Factory/Pipeline.hs`: command dispatch, source discovery, path protection, staging, and promotion.
-- `site/`: shared static templates and browser interaction runtime.
-- `.github/workflows/build-pdf-site.yml`: consumer/factory checkout isolation, toolchain setup, evaluation, and artifact upload.
-
-Do not move logic across these boundaries without updating the architecture document and creating a PR-only SVG under `visual-explanations/`.
-
-## Public Workflow Contract
-
-- `site-title` is the only required input.
-- `github-pages` is the deployable artifact name.
-- `pdf-site-evaluation` is the evidence artifact name.
-- Existing required inputs, artifact names, and generated file names are stable public interfaces.
-- New workflow inputs must be optional unless all known consumers are migrated in the same coordinated change.
-- The workflow may be referenced through `main`; each run must check out factory code at `job.workflow_sha` to prevent internal version drift.
-- The reusable workflow must not request Pages write or OpenID Connect token permissions.
-
-## Coding Rules
+## Implementation Rules
 
 - Use GHC2021, `-Wall`, `-Wcompat`, and `-Werror`.
-- Prefer named domain types and sum types over primitive values and boolean flags.
-- Return `Either BuildError value` for expected parser and validation failures.
-- Keep functions short and single-purpose. Avoid speculative abstractions and dependencies.
+- Prefer named domain types and sum types over primitives and boolean flags.
+- Return `Either BuildError value` for expected parsing and validation failures.
+- Keep deterministic transformations pure and put filesystem or process effects at module boundaries.
 - Preserve deterministic ordering when reading unordered PDF dictionaries.
-- Do not add consumer-specific filenames, dimensions, resource names, scene counts, repository names, or complete content URLs. A provider route format may be recognized only when it is part of documented factory behavior.
-- Do not weaken evaluation thresholds or make them caller-configurable merely to pass another source.
-- Do not commit `dist/`, `build/`, `dist-newstyle/`, generated evaluation images, or Mermaid source.
+- Inspect the existing domain and interpreter before adding a type or PDF operator.
+- Base parser changes on a real consumer PDF observation or a focused failing test.
+- Add one focused unit test for each new pure behavior. Avoid duplicate assertions and real I/O in unit tests.
+- Do not weaken evaluation thresholds or make them caller-configurable to accommodate another source.
+- Keep functions short, single-purpose, and free of speculative abstractions or dependencies.
+
+## Documentation Updates
+
+| Change | Canonical update |
+| --- | --- |
+| Public setup, inputs, outputs, or usage | `README.md` |
+| Supported PDF behavior or limitation | `docs/pdf-investigation.md` |
+| Module ownership, architecture, or data flow | `docs/architecture.md` and a PR-only SVG |
+| Product requirement or observable behavior | Supersede or add the relevant PRD or BDR and update its index |
+| Load-bearing implementation decision | Add an ADR and update `docs/adr/index.md` |
+| Implementation work or completion evidence | Add or update the linked issue and `docs/issues/index.md` |
+| New project term | `docs/context/glossary.md` and its index |
+
+Do not copy detailed requirements, decisions, test scenarios, thresholds, or module maps into multiple documents.
 
 ## Verification
 
-`make test` must prove:
+| Change | Required verification |
+| --- | --- |
+| Documentation only | Check links, commands, public names, and consistency with executable configuration. |
+| Any implementation | Run focused tests and `make test`. |
+| Parser, geometry, rendering, asset, style, template, or browser runtime | Run `make test` and `make evaluate`; inspect `build/evaluation/report.html`. |
+| Parser support | Validate the real consumer PDF that motivated the change and record the evidence. |
+| Reusable workflow boundary | Exercise isolated consumer and factory paths through the reusable workflow. |
+| Consumer migration | Run the reusable workflow against the real consumer and validate its deployment separately. |
 
-- all Haskell components compile with warnings as errors;
-- every focused unit test passes;
-- the synthetic one-page fixture can be inspected and built;
-- vector-only output is valid without a raster-assets requirement;
-- required distribution files exist;
-- the runtime contains no Canvas fallback;
-- no PDF is present in the generated site;
-- generated resource references are relative.
-- exact Algo Arcade game routes and deceptive lookalike hosts receive different typed targets.
+Factory CI must call `.github/workflows/build-pdf-site.yml` against the synthetic fixture. `make evaluate` is not a substitute for `make test`.
 
-`make evaluate` must additionally prove:
+## Repository Hygiene
 
-- Chromium reaches `data-ready="true"` after loading generated assets and fonts;
-- visual error and ink metrics meet the constants in `Factory.Evaluation` at 18 and 72 DPI;
-- `build/evaluation/report.html` and its reference, generated, and difference images are current.
-- synthesized interactive affordances are absent from PDF-fidelity screenshots.
-- normal-mode game anchors expose route-specific labels, secure new-tab attributes, and a visible gamepad badge.
-
-CI must call `.github/workflows/build-pdf-site.yml` as a reusable workflow against the factory fixture. A real consumer migration must additionally pass the same workflow with its own source checkout.
-
-## Completion Criteria
-
-A change is complete only when focused tests, `make test`, `make evaluate`, reusable-workflow linting, the factory CI smoke call, relevant consumer validation, and strict living-docs maintenance pass; evaluation reports are inspected; and no generated or prohibited artifact is staged.
+Do not commit `dist/`, `build/`, `dist-newstyle/`, generated evaluation images, or Mermaid source. A change is complete when the applicable verification above passes, required evaluation reports have been inspected, living-doc records and indexes are current, consumer evidence is recorded when required, and no generated or prohibited artifact is staged.
