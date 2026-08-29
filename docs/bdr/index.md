@@ -6,3 +6,4 @@
 - [BDR 0004: Interactive linked-card output](/bdr/0004-interactive-linked-card-output.md) - Superseded by BDR 0005.
 - [BDR 0005: Fidelity-preserving mixed scene output](/bdr/0005-fidelity-preserving-mixed-scene-output.md) - Accepted. Define ordered mask classification, mixed rendering, typed links, and fidelity behavior.
 - [BDR 0006: Expanded Freeform graphics output](/bdr/0006-expanded-freeform-graphics-output.md) - Accepted. Preserve observed path graphics state and affine artwork in browser SVG.
+- [BDR 0007: Tiled visual evaluation](/bdr/0007-tiled-visual-evaluation.md) - Accepted. Preserve fixed visual gates for boards beyond one Chromium viewport.
