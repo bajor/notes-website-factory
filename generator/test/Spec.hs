@@ -8,13 +8,13 @@ import Data.Aeson (Value (Object, String), toJSON)
 import Factory.Domain
 import Factory.Evaluation (EvaluationResult (evaluationPassed), calculateDifference)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
-import Factory.Interpreter (Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
+import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
 import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
 import Pdf.Content (Op (..), Operator)
-import Pdf.Core (Object (Name, Number))
+import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
 import qualified Data.ByteString as ByteString
@@ -22,6 +22,7 @@ import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Map.Strict as Map
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as Text
+import qualified Data.Vector as Vector
 
 main :: IO ()
 main = defaultMain tests
@@ -70,6 +71,45 @@ interpreterTests =
         case interpretOperators pageHeight emptyResources closedCurveOperators of
           Right [PathNode commands _ _] -> commandAt 3 commands @?= Just (CurveTo (Point 10 90) (Point 30 80) (Point 40 60))
           result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "miter-limit operators reach painted path styles" $
+        case interpretOperators pageHeight emptyResources [operator Op_M [4], operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])] of
+          Right [PathNode _ style _] -> paintMiterLimit style @?= 4
+          result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "miter limits below one fail explicitly" $
+        interpretOperators pageHeight emptyResources [operator Op_M [0]]
+          @?= Left (PdfStructureError "miter limit must be at least 1")
+    , testCase "dash operators reach painted path styles" $
+        case interpretOperators pageHeight emptyResources [dashOperator [28, 28] 0, operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])] of
+          Right [PathNode _ style _] -> (paintDashArray style, paintDashPhase style) @?= ([28, 28], 0)
+          result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "similarity transforms scale stroke metrics" $
+        case interpretOperators pageHeight emptyResources [operator Op_cm [2, 0, 0, 2, 0, 0], operator Op_w [3], dashOperator [2, 1] 4, operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])] of
+          Right [PathNode _ style _] -> (paintLineWidth style, paintDashArray style, paintDashPhase style) @?= (6, [4, 2], 8)
+          result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "non-similarity transforms reject stroked paths" $
+        interpretOperators pageHeight emptyResources [operator Op_cm [2, 0, 0, 3, 0, 0], operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])]
+          @?= Left (UnsupportedOperator "stroked paths require a non-singular similarity transform")
+    , testCase "small singular transforms reject stroked paths" $
+        interpretOperators pageHeight emptyResources [operator Op_cm [0.000001, 0, 0, 0, 0, 0], operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])]
+          @?= Left (UnsupportedOperator "stroked paths require a non-singular similarity transform")
+    , testCase "all-zero dash arrays fail explicitly" $
+        interpretOperators pageHeight emptyResources [dashOperator [0, 0] 0]
+          @?= Left (PdfStructureError "dash array must not contain only zeros")
+    , testCase "named RGB stroke colors reach painted paths" $
+        case interpretOperators pageHeight namedRgbResources [(Op_CS, [Name "Cs1"]), operator Op_SC [0.75, 0.5, 0.25], operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])] of
+          Right [PathNode _ style _] -> paintStroke style @?= Just (Color 0.75 0.5 0.25)
+          result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "named RGB fill colors reach painted paths" $
+        case interpretOperators pageHeight namedRgbResources [(Op_cs, [Name "Cs1"]), operator Op_sc [0.75, 0.5, 0.25], operator Op_re [0, 0, 10, 10], (Op_f, [])] of
+          Right [PathNode _ style _] -> fmap fst (paintFill style) @?= Just (Color 0.75 0.5 0.25)
+          result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "selecting a color space resets its current color" $
+        case interpretOperators pageHeight namedRgbResources [operator Op_RG [1, 0, 0], (Op_CS, [Name "Cs1"]), operator Op_m [0, 0], operator Op_l [10, 10], (Op_S, [])] of
+          Right [PathNode _ style _] -> paintStroke style @?= Just (Color 0 0 0)
+          result -> assertFailure ("unexpected interpreter result: " <> show result)
+    , testCase "selecting an unsupported named color space fails explicitly" $
+        interpretOperators pageHeight unsupportedColorResources [(Op_CS, [Name "PatternSpace"])]
+          @?= Left (UnsupportedOperator "unsupported named color space: PatternSpace")
     , testCase "PDF text fails until font decoding is supported" $
         interpretOperators pageHeight emptyResources [(Op_BT, [])]
           @?= Left (UnsupportedOperator "PDF text requires font decoding and metrics")
@@ -179,6 +219,14 @@ validationTests =
         case validateScene (sceneWith [] [VectorArtworkNode [testVectorShape] identityMatrix 1 []]) of
           Right _ -> pure ()
           Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
+    , testCase "rotated vector artwork is valid" $
+        case validateScene (sceneWith [] [VectorArtworkNode [testVectorShape] (Matrix 0 1 (-1) 0 10 10) 1 []]) of
+          Right _ -> pure ()
+          Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
+    , testCase "an affine image bounding box does not imply full-board coverage" $
+        case validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 100 100 100 0 0 0) 1 []]) of
+          Right _ -> pure ()
+          Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
     ]
 
 evaluationTests :: TestTree
@@ -238,10 +286,10 @@ gameUrl :: Text.Text
 gameUrl = "https://bajor.github.io/algo-arcade/#/games/example-game"
 
 emptyResources :: Resources
-emptyResources = Resources Map.empty Map.empty
+emptyResources = Resources Map.empty Map.empty Map.empty
 
 imageResources :: Resources
-imageResources = Resources (Map.singleton "Im1" (RasterResource (AssetId "asset-1"))) Map.empty
+imageResources = Resources (Map.singleton "Im1" (RasterResource (AssetId "asset-1"))) Map.empty Map.empty
 
 mixedResources :: Resources
 mixedResources =
@@ -252,12 +300,27 @@ mixedResources =
         ]
     )
     Map.empty
+    Map.empty
+
+namedRgbResources :: Resources
+namedRgbResources = Resources Map.empty Map.empty (Map.singleton "Cs1" (SupportedColorSpace RgbColorSpace))
+
+unsupportedColorResources :: Resources
+unsupportedColorResources = Resources Map.empty Map.empty (Map.singleton "PatternSpace" UnsupportedColorSpace)
 
 testVectorShape :: VectorShape
 testVectorShape = VectorShape (VectorPath "M0,0L1,0L1,1Z") (Color 0 0 0) 1
 
 operator :: Op -> [Double] -> Operator
 operator name values = (name, map (Number . Scientific.fromFloatDigits) values)
+
+dashOperator :: [Double] -> Double -> Operator
+dashOperator values phase =
+  ( Op_d
+  , [ Array (Vector.fromList (map (Number . Scientific.fromFloatDigits) values))
+    , Number (Scientific.fromFloatDigits phase)
+    ]
+  )
 
 closedCurveOperators :: [Operator]
 closedCurveOperators =

@@ -17,6 +17,7 @@ module Factory.Domain
   , ClipRule (..)
   , Color (..)
   , Coordinate (..)
+  , DeviceColorSpace (..)
   , FillRule (..)
   , GameUrl (..)
   , LinkTarget (..)
@@ -107,10 +108,16 @@ data Color = Color
   }
   deriving stock (Eq, Show)
 
+data DeviceColorSpace = GrayColorSpace | RgbColorSpace | CmykColorSpace
+  deriving stock (Eq, Show)
+
 data PaintStyle = PaintStyle
   { paintFill :: Maybe (Color, FillRule)
   , paintStroke :: Maybe Color
   , paintLineWidth :: Double
+  , paintMiterLimit :: Double
+  , paintDashArray :: [Double]
+  , paintDashPhase :: Double
   , paintOpacity :: Double
   }
   deriving stock (Eq, Show)
@@ -257,6 +264,9 @@ instance ToJSON PaintStyle where
       [ "fill" .= fmap encodeFill (paintFill style)
       , "stroke" .= paintStroke style
       , "lineWidth" .= paintLineWidth style
+      , "miterLimit" .= paintMiterLimit style
+      , "dashArray" .= paintDashArray style
+      , "dashPhase" .= paintDashPhase style
       , "opacity" .= paintOpacity style
       ]
     where
