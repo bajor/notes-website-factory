@@ -73,14 +73,13 @@ function addImage(node, assets) {
 
   const image = createSvgElement('image');
   image.classList.add('scene-image');
-  const bounds = transformedUnitBounds(node.matrix);
-  image.setAttribute('x', bounds.x);
-  image.setAttribute('y', bounds.y);
-  image.setAttribute('width', bounds.width);
-  image.setAttribute('height', bounds.height);
+  image.setAttribute('x', 0);
+  image.setAttribute('y', 0);
+  image.setAttribute('width', 1);
+  image.setAttribute('height', 1);
   image.setAttribute('opacity', node.opacity);
   image.setAttribute('preserveAspectRatio', 'none');
-  image.setAttribute('transform', centeredFlip(bounds, Math.sign(node.matrix.a), -Math.sign(node.matrix.d)));
+  image.setAttribute('transform', cssMatrix(imagePresentationMatrix(node.matrix)));
   const loaded = new Promise((resolve, reject) => {
     image.addEventListener('load', resolve, { once: true });
     image.addEventListener('error', () => reject(new Error(`Could not load ${asset.file}`)), { once: true });
@@ -91,15 +90,10 @@ function addImage(node, assets) {
 }
 
 function addVectorArtwork(node) {
-  const bounds = transformedUnitBounds(node.matrix);
   const group = createSvgElement('g');
-  const horizontalScale = Math.sign(node.matrix.a) * bounds.width;
-  const verticalScale = -Math.sign(node.matrix.d) * bounds.height;
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
   group.classList.add('scene-vector-artwork');
   group.setAttribute('opacity', node.opacity);
-  group.setAttribute('transform', `translate(${centerX} ${centerY}) scale(${horizontalScale} ${verticalScale}) translate(-0.5 -0.5)`);
+  group.setAttribute('transform', cssMatrix(imagePresentationMatrix(node.matrix)));
   for (const shape of node.shapes) {
     const path = createSvgElement('path');
     path.setAttribute('d', shape.path);
@@ -125,6 +119,11 @@ function addPath(node) {
   if (node.style.stroke) {
     path.setAttribute('stroke', cssColor(node.style.stroke));
     path.setAttribute('stroke-width', node.style.lineWidth);
+    path.setAttribute('stroke-miterlimit', node.style.miterLimit);
+    if (node.style.dashArray.length > 0) {
+      path.setAttribute('stroke-dasharray', node.style.dashArray.join(' '));
+      path.setAttribute('stroke-dashoffset', node.style.dashPhase);
+    }
   }
   appendVisual(path, node.clips);
 }
@@ -241,12 +240,6 @@ function createSvgElement(name) {
   return document.createElementNS(svgNamespace, name);
 }
 
-function centeredFlip(bounds, horizontal, vertical) {
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
-  return `translate(${centerX} ${centerY}) scale(${horizontal} ${vertical}) translate(${-centerX} ${-centerY})`;
-}
-
 function installControls() {
   document.querySelector('[data-action="zoom-in"]').addEventListener('click', () => zoomAt(1.35, viewport.clientWidth / 2, viewport.clientHeight / 2));
   document.querySelector('[data-action="zoom-out"]').addEventListener('click', () => zoomAt(1 / 1.35, viewport.clientWidth / 2, viewport.clientHeight / 2));
@@ -354,29 +347,14 @@ function cssMatrix(matrix) {
   return `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${matrix.e}, ${matrix.f})`;
 }
 
-// PDF image samples and DOM images use opposite vertical conventions. The
-// caller keeps the matrix signs as CSS flips while this function owns layout.
-function transformedUnitBounds(matrix) {
-  const corners = [
-    transformPoint(matrix, 0, 0),
-    transformPoint(matrix, 1, 0),
-    transformPoint(matrix, 0, 1),
-    transformPoint(matrix, 1, 1),
-  ];
-  const xs = corners.map((point) => point.x);
-  const ys = corners.map((point) => point.y);
+function imagePresentationMatrix(matrix) {
   return {
-    x: Math.min(...xs),
-    y: Math.min(...ys),
-    width: Math.max(...xs) - Math.min(...xs),
-    height: Math.max(...ys) - Math.min(...ys),
-  };
-}
-
-function transformPoint(matrix, x, y) {
-  return {
-    x: matrix.a * x + matrix.c * y + matrix.e,
-    y: matrix.b * x + matrix.d * y + matrix.f,
+    a: matrix.a,
+    b: matrix.b,
+    c: -matrix.c,
+    d: -matrix.d,
+    e: matrix.e + matrix.c,
+    f: matrix.f + matrix.d,
   };
 }
 

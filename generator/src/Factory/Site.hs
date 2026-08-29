@@ -14,6 +14,7 @@ module Factory.Site
 import Data.Aeson (encode, object, (.=))
 import Data.ByteString.Lazy (toStrict)
 import Data.List (nub)
+import Data.Ratio ((%))
 import Data.Set (Set)
 import Factory.Domain
 import System.Directory (copyFile, createDirectoryIfMissing)
@@ -34,7 +35,6 @@ validateScene scene
   | knownAssets /= referencedAssets = Left (InvalidScene "scene contains an unreferenced asset")
   | any (not . nodeIsFinite) (sceneContent scene) = Left (InvalidScene "scene contains a non-finite number")
   | any (not . nodeValuesAreValid) nodes = Left (InvalidScene "scene contains an invalid size, color, or opacity")
-  | any imageTransformIsUnsupported nodes = Left (InvalidScene "rotated or sheared images are not supported")
   | any (imageCoversBoard width height) nodes = Left (InvalidScene "a full-board raster image is not allowed")
   | otherwise =
       Right
@@ -123,12 +123,15 @@ nodeValuesAreValid :: SceneNode -> Bool
 nodeValuesAreValid node = case node of
   ImageNode _ _ opacity _ -> unitInterval opacity
   VectorArtworkNode shapes _ opacity _ -> not (null shapes) && unitInterval opacity && all vectorShapeIsValid shapes
-  PathNode _ style _ -> paintLineWidth style >= 0 && unitInterval (paintOpacity style) && maybe True (colorIsValid . fst) (paintFill style) && maybe True colorIsValid (paintStroke style)
+  PathNode _ style _ -> paintLineWidth style >= 0 && paintMiterLimit style >= 1 && validDashArray (paintDashArray style) && unitInterval (paintOpacity style) && maybe True (colorIsValid . fst) (paintFill style) && maybe True colorIsValid (paintStroke style)
   TextNode run _ -> textFontSize run > 0 && unitInterval (textOpacity run)
   LinkNode _ rectangle -> unCoordinate (rectWidth rectangle) > 0 && unCoordinate (rectHeight rectangle) > 0
 
 unitInterval :: Double -> Bool
 unitInterval value = value >= 0 && value <= 1
+
+validDashArray :: [Double] -> Bool
+validDashArray values = all (>= 0) values && (null values || any (> 0) values)
 
 colorIsValid :: Color -> Bool
 colorIsValid color = all unitInterval [colorRed color, colorGreen color, colorBlue color]
@@ -136,6 +139,9 @@ colorIsValid color = all unitInterval [colorRed color, colorGreen color, colorBl
 styleIsFinite :: PaintStyle -> Bool
 styleIsFinite style =
   finite (paintLineWidth style)
+    && finite (paintMiterLimit style)
+    && all finite (paintDashArray style)
+    && finite (paintDashPhase style)
     && finite (paintOpacity style)
     && maybe True (colorIsFinite . fst) (paintFill style)
     && maybe True colorIsFinite (paintStroke style)
@@ -162,26 +168,32 @@ commandIsFinite command = case command of
 pointIsFinite :: Point BoardSpace -> Bool
 pointIsFinite point = all (finite . unCoordinate) [pointX point, pointY point]
 
-imageTransformIsUnsupported :: SceneNode -> Bool
-imageTransformIsUnsupported (ImageNode _ matrix _ _) = abs (matrixB matrix) > matrixTolerance || abs (matrixC matrix) > matrixTolerance
-imageTransformIsUnsupported (VectorArtworkNode _ matrix _ _) = abs (matrixB matrix) > matrixTolerance || abs (matrixC matrix) > matrixTolerance
-imageTransformIsUnsupported _ = False
-
-matrixTolerance :: Double
-matrixTolerance = 1e-9
-
 imageCoversBoard :: Double -> Double -> SceneNode -> Bool
 imageCoversBoard boardWidth boardHeight (ImageNode _ matrix _ _) =
-  left <= 0
-    && top <= 0
-    && right >= boardWidth
-    && bottom >= boardHeight
+  determinant /= 0 && all inside [(0, 0), (width, 0), (0, height), (width, height)]
   where
-    left = min (matrixE matrix) (matrixE matrix + matrixA matrix)
-    right = max (matrixE matrix) (matrixE matrix + matrixA matrix)
-    top = min (matrixF matrix) (matrixF matrix + matrixD matrix)
-    bottom = max (matrixF matrix) (matrixF matrix + matrixD matrix)
+    a = toRational (matrixA matrix)
+    b = toRational (matrixB matrix)
+    c = toRational (matrixC matrix)
+    d = toRational (matrixD matrix)
+    e = toRational (matrixE matrix)
+    f = toRational (matrixF matrix)
+    width = toRational boardWidth
+    height = toRational boardHeight
+    determinant = a * d - b * c
+    inside (x, y) =
+      let offsetX = x - e
+          offsetY = y - f
+          unitX = (d * offsetX - c * offsetY) / determinant
+          unitY = (a * offsetY - b * offsetX) / determinant
+       in unitX >= -coverageTolerance
+            && unitX <= 1 + coverageTolerance
+            && unitY >= -coverageTolerance
+            && unitY <= 1 + coverageTolerance
 imageCoversBoard _ _ _ = False
+
+coverageTolerance :: Rational
+coverageTolerance = 1 % 1000000000
 
 countNodes :: (SceneNode -> Bool) -> Scene phase -> Int
 countNodes predicate = length . filter predicate . sceneNodes

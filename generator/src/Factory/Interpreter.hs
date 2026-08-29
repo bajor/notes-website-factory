@@ -6,7 +6,8 @@
 -- operator at a time. Each visit receives the old state and returns a new
 -- state. Nothing is changed in place, which makes every transition testable.
 module Factory.Interpreter
-  ( Resources (..)
+  ( ColorSpaceResource (..)
+  , Resources (..)
   , VisualResource (..)
   , interpretOperators
   ) where
@@ -19,15 +20,22 @@ import Factory.Geometry
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Name, Object)
 import Pdf.Core.Name (toByteString)
-import Pdf.Core.Object.Util (nameValue, realValue)
+import Pdf.Core.Object.Util (arrayValue, nameValue, realValue)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TextEncoding
+import qualified Data.Vector as Vector
 
 data Resources = Resources
   { resourceImages :: Map Name VisualResource
   , resourceAlpha :: Map Name Double
+  , resourceColorSpaces :: Map Name ColorSpaceResource
   }
+  deriving stock (Eq, Show)
+
+data ColorSpaceResource
+  = SupportedColorSpace DeviceColorSpace
+  | UnsupportedColorSpace
   deriving stock (Eq, Show)
 
 data VisualResource
@@ -41,7 +49,12 @@ data GraphicsState = GraphicsState
   , currentOpacity :: Double
   , currentFill :: Color
   , currentStroke :: Color
+  , currentFillColorSpace :: DeviceColorSpace
+  , currentStrokeColorSpace :: DeviceColorSpace
   , currentLineWidth :: Double
+  , currentMiterLimit :: Double
+  , currentDashArray :: [Double]
+  , currentDashPhase :: Double
   }
   deriving stock (Eq, Show)
 
@@ -62,7 +75,12 @@ initialGraphics =
     , currentOpacity = 1
     , currentFill = Color 0 0 0
     , currentStroke = Color 0 0 0
+    , currentFillColorSpace = GrayColorSpace
+    , currentStrokeColorSpace = GrayColorSpace
     , currentLineWidth = 1
+    , currentMiterLimit = 10
+    , currentDashArray = []
+    , currentDashPhase = 0
     }
 
 initialMachine :: Machine
@@ -85,6 +103,12 @@ step pageHeight resources machine operator = case operator of
     Right machine {machineGraphics = graphics {currentMatrix = multiplyMatrix matrix (currentMatrix graphics)}}
   (Op_gs, [value]) -> setAlpha resources machine value
   (Op_w, [value]) -> setLineWidth machine value
+  (Op_M, [value]) -> setMiterLimit machine value
+  (Op_d, [values, phase]) -> setDashPattern machine values phase
+  (Op_CS, [value]) -> selectColorSpace resources False machine value
+  (Op_cs, [value]) -> selectColorSpace resources True machine value
+  (Op_SC, values) -> setSelectedColor False machine values
+  (Op_sc, values) -> setSelectedColor True machine values
   (Op_g, [value]) -> setGray True machine value
   (Op_G, [value]) -> setGray False machine value
   (Op_rg, values) -> setRgb True machine values
@@ -101,15 +125,15 @@ step pageHeight resources machine operator = case operator of
   (Op_W, []) -> Right machine {machinePendingClip = Just ClipNonZero}
   (Op_W_star, []) -> Right machine {machinePendingClip = Just ClipEvenOdd}
   (Op_n, []) -> Right (finishWithoutPaint machine)
-  (Op_S, []) -> Right (finishWithPaint machine Nothing True NonZero)
-  (Op_s, []) -> Right (finishWithPaint (closeCurrentPath machine) Nothing True NonZero)
-  (Op_f, []) -> Right (finishWithPaint machine (Just (currentFill (machineGraphics machine))) False NonZero)
-  (Op_F, []) -> Right (finishWithPaint machine (Just (currentFill (machineGraphics machine))) False NonZero)
-  (Op_f_star, []) -> Right (finishWithPaint machine (Just (currentFill (machineGraphics machine))) False EvenOdd)
-  (Op_B, []) -> Right (finishWithPaint machine (Just (currentFill (machineGraphics machine))) True NonZero)
-  (Op_B_star, []) -> Right (finishWithPaint machine (Just (currentFill (machineGraphics machine))) True EvenOdd)
-  (Op_b, []) -> Right (finishWithPaint (closeCurrentPath machine) (Just (currentFill (machineGraphics machine))) True NonZero)
-  (Op_b_star, []) -> Right (finishWithPaint (closeCurrentPath machine) (Just (currentFill (machineGraphics machine))) True EvenOdd)
+  (Op_S, []) -> finishWithPaint machine Nothing True NonZero
+  (Op_s, []) -> finishWithPaint (closeCurrentPath machine) Nothing True NonZero
+  (Op_f, []) -> finishWithPaint machine (Just (currentFill (machineGraphics machine))) False NonZero
+  (Op_F, []) -> finishWithPaint machine (Just (currentFill (machineGraphics machine))) False NonZero
+  (Op_f_star, []) -> finishWithPaint machine (Just (currentFill (machineGraphics machine))) False EvenOdd
+  (Op_B, []) -> finishWithPaint machine (Just (currentFill (machineGraphics machine))) True NonZero
+  (Op_B_star, []) -> finishWithPaint machine (Just (currentFill (machineGraphics machine))) True EvenOdd
+  (Op_b, []) -> finishWithPaint (closeCurrentPath machine) (Just (currentFill (machineGraphics machine))) True NonZero
+  (Op_b_star, []) -> finishWithPaint (closeCurrentPath machine) (Just (currentFill (machineGraphics machine))) True EvenOdd
   (Op_Do, [value]) -> emitImage pageHeight resources machine value
   (Op_BT, []) -> Left (UnsupportedOperator "PDF text requires font decoding and metrics")
   (Op_ri, _) -> Right machine
@@ -181,21 +205,45 @@ appendRectangle height machine values = case traverse number values of
 finishWithoutPaint :: Machine -> Machine
 finishWithoutPaint = clearPath . applyPendingClip
 
-finishWithPaint :: Machine -> Maybe Color -> Bool -> FillRule -> Machine
-finishWithPaint machine fillColor hasStroke fillRule =
-  clearPath (appendNode (applyPendingClip machine))
+finishWithPaint :: Machine -> Maybe Color -> Bool -> FillRule -> Either BuildError Machine
+finishWithPaint machine fillColor hasStroke fillRule = do
+  strokeScale <-
+    if hasStroke && not (null (machinePath machine))
+      then similarityScale (currentMatrix graphics)
+      else Right 1
+  Right (clearPath (appendNode (applyPendingClip machine) strokeScale))
   where
     graphics = machineGraphics machine
-    style =
+    style strokeScale =
       PaintStyle
         { paintFill = fmap (,fillRule) fillColor
         , paintStroke = if hasStroke then Just (currentStroke graphics) else Nothing
-        , paintLineWidth = currentLineWidth graphics
+        , paintLineWidth = strokeScale * currentLineWidth graphics
+        , paintMiterLimit = currentMiterLimit graphics
+        , paintDashArray = map (strokeScale *) (currentDashArray graphics)
+        , paintDashPhase = strokeScale * currentDashPhase graphics
         , paintOpacity = currentOpacity graphics
         }
-    appendNode current
+    appendNode current strokeScale
       | null (machinePath machine) = current
-      | otherwise = current {machineNodes = PathNode (machinePath machine) style (currentClips graphics) : machineNodes current}
+      | otherwise = current {machineNodes = PathNode (machinePath machine) (style strokeScale) (currentClips graphics) : machineNodes current}
+
+similarityScale :: Matrix -> Either BuildError Double
+similarityScale (Matrix a b c d _ _) =
+  if determinant /= 0 && sameLength && orthogonal
+    then Right scale
+    else Left (UnsupportedOperator "stroked paths require a non-singular similarity transform")
+  where
+    firstSquared = a * a + b * b
+    secondSquared = c * c + d * d
+    dotProduct = a * c + b * d
+    determinant = a * d - b * c
+    scale = sqrt firstSquared
+    sameLength = abs (firstSquared - secondSquared) <= similarityTolerance * max firstSquared secondSquared
+    orthogonal = abs dotProduct <= similarityTolerance * sqrt (firstSquared * secondSquared)
+
+similarityTolerance :: Double
+similarityTolerance = 1e-9
 
 applyPendingClip :: Machine -> Machine
 applyPendingClip machine = case machinePendingClip machine of
@@ -250,24 +298,87 @@ setLineWidth machine value = do
   width <- number value
   let graphics = machineGraphics machine
   Right machine {machineGraphics = graphics {currentLineWidth = width}}
+setMiterLimit :: Machine -> Object -> Either BuildError Machine
+setMiterLimit machine value = do
+  limit <- number value
+  if limit < 1
+    then Left (PdfStructureError "miter limit must be at least 1")
+    else
+      let graphics = machineGraphics machine
+       in Right machine {machineGraphics = graphics {currentMiterLimit = limit}}
+setDashPattern :: Machine -> Object -> Object -> Either BuildError Machine
+setDashPattern machine valuesObject phaseObject = do
+  values <- maybe (Left (PdfStructureError "dash pattern expected an array")) Right (arrayValue valuesObject)
+  dashArray <- traverse number (Vector.toList values)
+  dashPhase <- number phaseObject
+  if any (< 0) dashArray
+    then Left (PdfStructureError "dash array values must be nonnegative")
+    else
+      if not (null dashArray) && all (== 0) dashArray
+        then Left (PdfStructureError "dash array must not contain only zeros")
+        else
+          let graphics = machineGraphics machine
+           in Right machine {machineGraphics = graphics {currentDashArray = dashArray, currentDashPhase = dashPhase}}
 setGray :: Bool -> Machine -> Object -> Either BuildError Machine
 setGray isFill machine value = do
   gray <- number value
-  setColor isFill machine (Color gray gray gray)
+  setColor isFill GrayColorSpace machine (Color gray gray gray)
 setRgb :: Bool -> Machine -> [Object] -> Either BuildError Machine
 setRgb isFill machine values = case traverse number values of
-  Right [red, green, blue] -> setColor isFill machine (Color red green blue)
+  Right [red, green, blue] -> setColor isFill RgbColorSpace machine (Color red green blue)
   _ -> Left (PdfStructureError "RGB operator expected three numbers")
 setCmyk :: Bool -> Machine -> [Object] -> Either BuildError Machine
 setCmyk isFill machine values = case traverse number values of
-  Right [cyan, magenta, yellow, black] ->
-    setColor isFill machine (Color (1 - min 1 (cyan + black)) (1 - min 1 (magenta + black)) (1 - min 1 (yellow + black)))
+  Right components@[cyan, magenta, yellow, black]
+    | all validColorComponent components ->
+        setColor isFill CmykColorSpace machine (Color (1 - min 1 (cyan + black)) (1 - min 1 (magenta + black)) (1 - min 1 (yellow + black)))
+    | otherwise -> Left (PdfStructureError "CMYK components must be between 0 and 1")
   _ -> Left (PdfStructureError "CMYK operator expected four numbers")
-setColor :: Bool -> Machine -> Color -> Either BuildError Machine
-setColor isFill machine color =
+
+validColorComponent :: Double -> Bool
+validColorComponent value = value >= 0 && value <= 1
+selectColorSpace :: Resources -> Bool -> Machine -> Object -> Either BuildError Machine
+selectColorSpace resources isFill machine value = do
+  name <- maybe (Left (PdfStructureError "color-space operator expected a name")) Right (nameValue value)
+  colorSpace <- case deviceColorSpace name of
+    Just device -> Right device
+    Nothing -> case Map.lookup name (resourceColorSpaces resources) of
+      Just (SupportedColorSpace supported) -> Right supported
+      Just UnsupportedColorSpace -> Left (UnsupportedOperator ("unsupported named color space: " <> nameText name))
+      Nothing -> Left (PdfStructureError ("missing color-space resource " <> nameText name))
+  Right (updateColor isFill colorSpace (Color 0 0 0) machine)
+
+setSelectedColor :: Bool -> Machine -> [Object] -> Either BuildError Machine
+setSelectedColor isFill machine values = case selectedColorSpace isFill machine of
+  GrayColorSpace -> case values of
+    [value] -> setGray isFill machine value
+    _ -> Left (PdfStructureError "gray color operator expected one number")
+  RgbColorSpace -> setRgb isFill machine values
+  CmykColorSpace -> setCmyk isFill machine values
+
+selectedColorSpace :: Bool -> Machine -> DeviceColorSpace
+selectedColorSpace isFill machine =
   let graphics = machineGraphics machine
-      updated = if isFill then graphics {currentFill = color} else graphics {currentStroke = color}
-   in Right machine {machineGraphics = updated}
+   in if isFill then currentFillColorSpace graphics else currentStrokeColorSpace graphics
+
+deviceColorSpace :: Name -> Maybe DeviceColorSpace
+deviceColorSpace name = case nameText name of
+  "DeviceGray" -> Just GrayColorSpace
+  "DeviceRGB" -> Just RgbColorSpace
+  "DeviceCMYK" -> Just CmykColorSpace
+  _ -> Nothing
+
+setColor :: Bool -> DeviceColorSpace -> Machine -> Color -> Either BuildError Machine
+setColor isFill colorSpace machine color = Right (updateColor isFill colorSpace color machine)
+
+updateColor :: Bool -> DeviceColorSpace -> Color -> Machine -> Machine
+updateColor isFill colorSpace color machine =
+  let graphics = machineGraphics machine
+      updated =
+        if isFill
+          then graphics {currentFill = color, currentFillColorSpace = colorSpace}
+          else graphics {currentStroke = color, currentStrokeColorSpace = colorSpace}
+   in machine {machineGraphics = updated}
 chunksOfTwo :: [a] -> [[a]]
 chunksOfTwo [] = []
 chunksOfTwo (first : second : rest) = [first, second] : chunksOfTwo rest

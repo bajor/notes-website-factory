@@ -28,7 +28,7 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Factory.Domain
 import Factory.Geometry (rectangleToBoard)
-import Factory.Interpreter (Resources (Resources), VisualResource (..), interpretOperators)
+import Factory.Interpreter (ColorSpaceResource (..), Resources (Resources), VisualResource (..), interpretOperators)
 import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
 import Network.URI (URI (uriAuthority, uriFragment, uriPath, uriQuery, uriScheme), URIAuth (uriPort, uriRegName, uriUserInfo), parseURI)
 import Pdf.Content (Expr, Operator, parseContent, readNextOperator)
@@ -120,9 +120,10 @@ parseOpenPdf assetDirectory pdf = do
   resources <- requireResolvedDict pdf pageDictionary "Resources"
   preparedImages <- prepareImages pdf resources
   alphaMap <- extractAlphaStates pdf resources
+  colorSpaceMap <- extractColorSpaces pdf resources
   operators <- readPageOperators pdf page
   let imageMap = Map.map preparedResource preparedImages
-  contentNodes <- liftEither (interpretOperators (Coordinate height) (Resources imageMap alphaMap) operators)
+  contentNodes <- liftEither (interpretOperators (Coordinate height) (Resources imageMap alphaMap colorSpaceMap) operators)
   links <- extractLinks pdf pageDictionary (Coordinate height)
   let referencedAssets = Set.fromList [identifier | ImageNode identifier _ _ _ <- contentNodes]
       usedImages = filter (isUsedRaster referencedAssets) (Map.elems preparedImages)
@@ -253,21 +254,11 @@ readSoftMask pdf dictionary width height = case HashMap.lookup "SMask" dictionar
 
 imageComponents :: Pdf -> Dict -> PdfAction Int
 imageComponents pdf dictionary = do
-  colorSpace <- requireKey dictionary "ColorSpace" >>= resolve pdf
+  colorSpaceObject <- requireKey dictionary "ColorSpace"
+  colorSpace <- supportedDeviceColorSpace pdf colorSpaceObject
   case colorSpace of
-    Name "DeviceGray" -> pure 1
-    Name "DeviceRGB" -> pure 3
-    Array values -> case Vector.toList values of
-      [Name "ICCBased", profileObject] -> do
-        resolvedProfile <- resolve pdf profileObject
-        profile <- case resolvedProfile of
-          Stream (S profileDictionary _) -> pure profileDictionary
-          object -> requireDict "ICCBased color profile" object
-        components <- requireInt profile "N"
-        if components `elem` [1, 3]
-          then pure components
-          else throwError (UnsupportedImage "ICCBased images must declare one or three components")
-      _ -> throwError (UnsupportedImage "unsupported image color space")
+    Just GrayColorSpace -> pure 1
+    Just RgbColorSpace -> pure 3
     _ -> throwError (UnsupportedImage "unsupported image color space")
 
 rgbaImage :: Int -> Int -> Int -> ByteString -> Maybe ByteString -> Either BuildError (Image PixelRGBA8)
@@ -306,6 +297,35 @@ extractAlphaStates pdf resources = do
     let opacity = fromMaybe 1 (HashMap.lookup "ca" dictionary >>= realValue)
     pure (name, opacity)
   pure (Map.fromList pairs)
+
+extractColorSpaces :: Pdf -> Dict -> PdfAction (Map Name ColorSpaceResource)
+extractColorSpaces pdf resources = do
+  colorSpaces <- optionalResolvedDict pdf resources "ColorSpace"
+  pairs <- forM (sortOn (nameText . fst) (HashMap.toList colorSpaces)) $ \(name, object) -> do
+    colorSpace <- supportedDeviceColorSpace pdf object
+    pure (name, maybe UnsupportedColorSpace SupportedColorSpace colorSpace)
+  pure (Map.fromList pairs)
+
+supportedDeviceColorSpace :: Pdf -> Object -> PdfAction (Maybe DeviceColorSpace)
+supportedDeviceColorSpace pdf object = do
+  colorSpace <- resolve pdf object
+  case colorSpace of
+    Name "DeviceGray" -> pure (Just GrayColorSpace)
+    Name "DeviceRGB" -> pure (Just RgbColorSpace)
+    Name "DeviceCMYK" -> pure (Just CmykColorSpace)
+    Array values -> case Vector.toList values of
+      [Name "ICCBased", profileObject] -> do
+        resolvedProfile <- resolve pdf profileObject
+        profile <- case resolvedProfile of
+          Stream (S profileDictionary _) -> pure profileDictionary
+          profileValue -> requireDict "ICCBased color profile" profileValue
+        components <- requireInt profile "N"
+        pure $ case components of
+          1 -> Just GrayColorSpace
+          3 -> Just RgbColorSpace
+          _ -> Nothing
+      _ -> pure Nothing
+    _ -> pure Nothing
 
 extractLinks :: Pdf -> Dict -> Coordinate PdfSpace -> PdfAction [SceneNode]
 extractLinks pdf pageDictionary pageHeight = case HashMap.lookup "Annots" pageDictionary of
