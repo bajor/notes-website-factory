@@ -9,6 +9,7 @@
 module Factory.Evaluation
   ( CaptureTile (..)
   , EvaluationResult (..)
+  , bodyIsReady
   , calculateDifference
   , captureTiles
   , runVisualEvaluation
@@ -133,27 +134,37 @@ runBrowser siteDirectory screenshotPath dpi width height = do
   browser <- maybe "chromium" id <$> lookupEnv "CHROMIUM"
   case captureTiles width height of
     [] -> pure (Left "browser capture dimensions must be positive")
-    tiles@(firstTile : _) -> do
-      renderedDom <- runToolOutput browser (browserArguments firstTile <> ["--dump-dom", pageUrl firstTile])
-      case renderedDom of
+    tiles -> do
+      ready <- checkBrowserReady browser
+      case ready of
         Left message -> pure (Left message)
-        Right html
-          | not ("data-ready=\"true\"" `Text.isInfixOf` html) -> pure (Left "chromium did not report a completed scene")
+        Right ()
           | [tile] <- tiles -> runTool browser (browserArguments tile <> ["--screenshot=" <> screenshotPath, pageUrl tile])
           | otherwise -> captureAndStitch browser tiles
   where
+    checkBrowserReady browser = do
+      rendered <- runToolOutput browser (browserArguments readinessTile <> ["--dump-dom", readinessUrl])
+      pure $ do
+        html <- rendered
+        if bodyIsReady html then Right () else Left "chromium did not report a completed scene"
+    readinessTile = CaptureTile 0 0 1280 720
+    readinessUrl = "file://" <> siteDirectory </> "index.html" <> "?evaluation=" <> show dpi <> "&readiness=1"
     captureAndStitch browser tiles = do
-      createDirectoryIfMissing True tileDirectory
-      captured <- captureAll tiles
-      result <- case captured of
-        Left message -> pure (Left message)
-        Right () -> do
-          stitched <- stitchTileFiles width height [(tile, tilePath tile) | tile <- tiles]
-          case stitched of
-            Left message -> pure (Left message)
-            Right image -> writePngSafely screenshotPath image
-      removePathForcibly tileDirectory
-      pure result
+      attempted <- try $ do
+        createDirectoryIfMissing True tileDirectory
+        captured <- captureAll tiles
+        case captured of
+          Left message -> pure (Left message)
+          Right () -> do
+            stitched <- stitchTileFiles width height [(tile, tilePath tile) | tile <- tiles]
+            case stitched of
+              Left message -> pure (Left message)
+              Right image -> writePngSafely screenshotPath image
+      cleaned <- try cleanupTileDirectory
+      pure $ case (attempted, cleaned) of
+        (Left exception, _) -> Left (Text.pack (show (exception :: IOException)))
+        (Right _, Left exception) -> Left (Text.pack (show (exception :: IOException)))
+        (Right result, Right ()) -> result
       where
         captureAll [] = pure (Right ())
         captureAll (tile : remaining) = do
@@ -162,6 +173,9 @@ runBrowser siteDirectory screenshotPath dpi width height = do
             Left message -> pure (Left message)
             Right () -> captureAll remaining
         captureTile tile = runTool browser (browserArguments tile <> ["--screenshot=" <> tilePath tile, pageUrl tile])
+    cleanupTileDirectory = do
+      exists <- doesPathExist tileDirectory
+      if exists then removePathForcibly tileDirectory else pure ()
     tileDirectory = takeDirectory screenshotPath </> ".capture-tiles"
     tilePath tile = tileDirectory </> takeFileName screenshotPath <> ".tile-" <> show (captureX tile) <> "-" <> show (captureY tile) <> ".png"
     pageUrl tile =
@@ -180,6 +194,13 @@ runBrowser siteDirectory screenshotPath dpi width height = do
       , "--force-device-scale-factor=1"
       , "--window-size=" <> show (captureWidth tile) <> "," <> show (captureHeight tile)
       ]
+
+bodyIsReady :: Text -> Bool
+bodyIsReady html =
+  not (Text.null body)
+    && "data-ready=\"true\"" `Text.isInfixOf` Text.takeWhile (/= '>') body
+  where
+    body = snd (Text.breakOn "<body" html)
 
 captureTiles :: Int -> Int -> [CaptureTile]
 captureTiles width height

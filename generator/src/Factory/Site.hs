@@ -36,6 +36,8 @@ validateScene scene
   | any (not . nodeIsFinite) (sceneContent scene) = Left (InvalidScene "scene contains a non-finite number")
   | any (not . nodeValuesAreValid) nodes = Left (InvalidScene "scene contains an invalid size, color, or opacity")
   | any (imageCoversBoard width height) nodes = Left (InvalidScene "a full-board raster image is not allowed")
+  | any (not . topicIsFinite) topics = Left (InvalidScene "topic bounds contain a non-finite number")
+  | any (not . topicIsValid width height) topics = Left (InvalidScene "topic bounds must be positive and inside the board")
   | otherwise =
       Right
         Scene
@@ -43,6 +45,7 @@ validateScene scene
           , sceneHeight = sceneHeight scene
           , sceneAssets = sceneAssets scene
           , sceneContent = sceneContent scene
+          , sceneTopics = topics
           }
   where
     width = unCoordinate (sceneWidth scene)
@@ -51,6 +54,7 @@ validateScene scene
     knownAssets = Set.fromList identifiers
     referencedAssets = Set.fromList [identifier | ImageNode identifier _ _ _ <- nodes]
     nodes = sceneContent scene
+    topics = sceneTopics scene
 
 writeSite :: FilePath -> FilePath -> SiteTitle -> Scene 'Validated -> IO ()
 writeSite templateDirectory outputDirectory title scene = do
@@ -74,6 +78,7 @@ writeSite templateDirectory outputDirectory title scene = do
             , "paths" .= countNodes isPath scene
             , "texts" .= countNodes isText scene
             , "links" .= countNodes isLink scene
+            , "topics" .= length (sceneTopics scene)
             ]
         )
 
@@ -168,6 +173,26 @@ commandIsFinite command = case command of
 pointIsFinite :: Point BoardSpace -> Bool
 pointIsFinite point = all (finite . unCoordinate) [pointX point, pointY point]
 
+topicIsFinite :: Topic -> Bool
+topicIsFinite = rectangleIsFinite . topicBounds
+
+rectangleIsFinite :: Rect space -> Bool
+rectangleIsFinite rectangle = all (finite . unCoordinate) [rectX rectangle, rectY rectangle, rectWidth rectangle, rectHeight rectangle]
+
+topicIsValid :: Double -> Double -> Topic -> Bool
+topicIsValid boardWidth boardHeight topic =
+  x >= 0
+    && y >= 0
+    && width > 0
+    && height > 0
+    && x + width <= boardWidth
+    && y + height <= boardHeight
+  where
+    bounds = topicBounds topic
+    x = unCoordinate (rectX bounds)
+    y = unCoordinate (rectY bounds)
+    width = unCoordinate (rectWidth bounds)
+    height = unCoordinate (rectHeight bounds)
 imageCoversBoard :: Double -> Double -> SceneNode -> Bool
 imageCoversBoard boardWidth boardHeight (ImageNode _ matrix _ _) =
   determinant /= 0 && all inside [(0, 0), (width, 0), (0, height), (width, height)]

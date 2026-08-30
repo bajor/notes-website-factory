@@ -7,7 +7,8 @@
 -- streams. This module translates those low-level values into our small
 -- domain. Everything after this module is independent of PDF internals.
 module Factory.Pdf
-  ( PdfSummary (..)
+  ( ParsedPdf (..)
+  , PdfSummary (..)
   , classifyUrl
   , parsePdf
   , rejectDecode
@@ -29,7 +30,7 @@ import Data.Text (Text)
 import Factory.Domain
 import Factory.Geometry (rectangleToBoard)
 import Factory.Interpreter (ColorSpaceResource (..), Resources (Resources), VisualResource (..), interpretOperators)
-import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
+import Factory.Vectorize (ImageDisposition (..), classifyImage, opaqueHighlighter, traceImage)
 import Network.URI (URI (uriAuthority, uriFragment, uriPath, uriQuery, uriScheme), URIAuth (uriPort, uriRegName, uriUserInfo), parseURI)
 import Pdf.Content (Expr, Operator, parseContent, readNextOperator)
 import Pdf.Core
@@ -78,6 +79,7 @@ data PdfSummary = PdfSummary
   , summaryVectorCount :: Int
   , summaryRasterCount :: Int
   , summaryLinkCount :: Int
+  , summaryTopicCount :: Int
   , summaryWidth :: Double
   , summaryHeight :: Double
   }
@@ -89,6 +91,11 @@ data PreparedImage
   = PreparedJpeg Asset ByteString
   | PreparedPng Asset (Image PixelRGBA8)
   | PreparedVector [VectorShape]
+
+data ParsedPdf = ParsedPdf
+  { parsedScene :: Scene 'Unvalidated
+  , parsedSummary :: PdfSummary
+  }
 
 preparedResource :: PreparedImage -> VisualResource
 preparedResource prepared = case prepared of
@@ -102,14 +109,14 @@ preparedAsset prepared = case prepared of
   PreparedPng asset _ -> Just asset
   PreparedVector _ -> Nothing
 
-parsePdf :: FilePath -> FilePath -> IO (Either BuildError (Scene 'Unvalidated, PdfSummary))
+parsePdf :: FilePath -> FilePath -> IO (Either BuildError ParsedPdf)
 parsePdf pdfPath assetDirectory = do
   result <- try (withPdfFile pdfPath (runExceptT . parseOpenPdf assetDirectory))
   pure $ case result of
     Left exception -> Left (IoError (Text.pack (displayException (exception :: SomeException))))
     Right parsed -> parsed
 
-parseOpenPdf :: FilePath -> Pdf -> PdfAction (Scene 'Unvalidated, PdfSummary)
+parseOpenPdf :: FilePath -> Pdf -> PdfAction ParsedPdf
 parseOpenPdf assetDirectory pdf = do
   liftIO (enableCache pdf)
   rootPages <- liftIO (document pdf >>= documentCatalog >>= catalogPageNode)
@@ -136,9 +143,10 @@ parseOpenPdf assetDirectory pdf = do
           , sceneHeight = Coordinate height
           , sceneAssets = assets
           , sceneContent = contentNodes <> links
+          , sceneTopics = []
           }
-      summary = PdfSummary 1 (length operators) (Map.size preparedImages) vectorCount rasterCount (length links) width height
-  pure (scene, summary)
+      summary = PdfSummary 1 (length operators) (Map.size preparedImages) vectorCount rasterCount (length links) 0 width height
+  pure (ParsedPdf scene summary)
 
 isPreparedVector :: PreparedImage -> Bool
 isPreparedVector PreparedVector {} = True
@@ -222,6 +230,10 @@ prepareImage pdf resourceName reference stream dictionary = do
         PreserveRaster ->
           let fileName = baseName <> ".png"
            in pure (PreparedPng (Asset identifier ("assets/" <> fileName) width height) image)
+        PreserveLowAlphaRaster ->
+          let fileName = baseName <> ".png"
+              outputImage = fromMaybe image (opaqueHighlighter image)
+           in pure (PreparedPng (Asset identifier ("assets/" <> fileName) width height) outputImage)
         TraceAsVector -> PreparedVector <$> liftEither (traceImage image)
     unsupported -> throwError (UnsupportedImage ("unsupported image filter: " <> unsupported))
 

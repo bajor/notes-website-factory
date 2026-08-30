@@ -1,13 +1,17 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Deterministically classify and trace embedded Freeform artwork.
 module Factory.Vectorize
-  ( ImageDisposition (..)
+  ( ContourPoint (..)
+  , ImageDisposition (..)
   , classifyImage
+  , opaqueHighlighter
   , traceImage
+  , traceSelectedContours
   ) where
 
-import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), imageHeight, imageWidth, pixelAt)
+import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), generateImage, imageHeight, imageWidth, pixelAt)
 import Data.ByteString (ByteString)
 import Data.List (foldl', maximumBy, minimumBy)
 import Data.Map.Strict (Map)
@@ -22,14 +26,26 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 
-data ImageDisposition = PreserveRaster | TraceAsVector
+data ImageDisposition = PreserveRaster | PreserveLowAlphaRaster | TraceAsVector
   deriving stock (Eq, Show)
 
 data Style = Style Word8 Word8 Word8 Word8
   deriving stock (Eq, Ord, Show)
 
-data GridPoint = GridPoint Int Int
+data ContourPoint = ContourPoint Int Int
   deriving stock (Eq, Ord, Show)
+
+data PixelProfile = PixelProfile
+  { profileVisible :: Int
+  , profileChromatic :: Int
+  , profileLeft :: Int
+  , profileTop :: Int
+  , profileRight :: Int
+  , profileBottom :: Int
+  , profileHasTransparency :: Bool
+  }
+
+type GridPoint = ContourPoint
 
 data Edge = Edge GridPoint GridPoint
   deriving stock (Eq, Ord, Show)
@@ -49,12 +65,18 @@ maximumVectorPoints = 500000
 simplificationToleranceSquared :: Double
 simplificationToleranceSquared = 1
 
+minimumHighlighterAspect :: Int
+minimumHighlighterAspect = 4
+
+minimumHighlighterChroma :: Int
+minimumHighlighterChroma = 28
+
 classifyImage :: Maybe ByteString -> Either BuildError ImageDisposition
 classifyImage Nothing = Right PreserveRaster
 classifyImage (Just alpha)
   | ByteString.null alpha = Left (UnsupportedImage "soft mask is empty")
   | not hasNonzeroAlpha = Left (UnsupportedImage "soft mask contains no visible artwork")
-  | not hasTraceableAlpha = Right PreserveRaster
+  | not hasTraceableAlpha = Right PreserveLowAlphaRaster
   | transparentFraction <= maximumRasterTransparency = Right PreserveRaster
   | transparentFraction < minimumTransparentFraction = Left (UnsupportedImage "soft-masked image is too opaque to classify safely")
   | otherwise = Right TraceAsVector
@@ -64,6 +86,50 @@ classifyImage (Just alpha)
     hasTraceableAlpha = any (>= minimumTraceableAlpha) samples
     transparent = length (filter (< 255) samples)
     transparentFraction = fromIntegral transparent / fromIntegral (length samples)
+
+opaqueHighlighter :: Image PixelRGBA8 -> Maybe (Image PixelRGBA8)
+opaqueHighlighter image
+  | visible == 0 = Nothing
+  | profileChromatic profile * 20 < visible * 19 = Nothing
+  | not (profileHasTransparency profile) = Nothing
+  | longer < shorter * minimumHighlighterAspect = Nothing
+  | otherwise = Just (generateImage opaquePixel (imageWidth image) (imageHeight image))
+  where
+    profile = imageProfile image
+    visible = profileVisible profile
+    width = profileRight profile - profileLeft profile
+    height = profileBottom profile - profileTop profile
+    longer = max width height
+    shorter = max 1 (min width height)
+    opaquePixel x y = case pixelAt image x y of
+      PixelRGBA8 red green blue 0 -> PixelRGBA8 red green blue 0
+      PixelRGBA8 red green blue _ -> PixelRGBA8 red green blue 255
+
+imageProfile :: Image PixelRGBA8 -> PixelProfile
+imageProfile image = rows 0 emptyProfile
+  where
+    emptyProfile = PixelProfile 0 0 (imageWidth image) (imageHeight image) 0 0 False
+    rows y !profile
+      | y == imageHeight image = profile
+      | otherwise = rows (y + 1) (columns 0 y profile)
+    columns x y !profile
+      | x == imageWidth image = profile
+      | otherwise = columns (x + 1) y (addPixel x y (pixelAt image x y) profile)
+
+addPixel :: Int -> Int -> PixelRGBA8 -> PixelProfile -> PixelProfile
+addPixel _ _ (PixelRGBA8 _ _ _ 0) profile = profile
+addPixel x y (PixelRGBA8 red green blue alpha) profile =
+  PixelProfile
+    { profileVisible = profileVisible profile + 1
+    , profileChromatic = profileChromatic profile + fromEnum (maximum channels - minimum channels >= minimumHighlighterChroma)
+    , profileLeft = min x (profileLeft profile)
+    , profileTop = min y (profileTop profile)
+    , profileRight = max (x + 1) (profileRight profile)
+    , profileBottom = max (y + 1) (profileBottom profile)
+    , profileHasTransparency = profileHasTransparency profile || alpha < 255
+    }
+  where
+    channels = map fromIntegral [red, green, blue] :: [Int]
 
 traceImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
 traceImage image
@@ -76,7 +142,15 @@ traceImage image
     pointCount = sum (map (Text.count "L" . unVectorPath . vectorPath) shapes)
 
 collectBoundaries :: Image PixelRGBA8 -> Map Style (Set Edge)
-collectBoundaries image = rows 0 Map.empty
+collectBoundaries = collectBoundariesBy pixelStyle
+
+traceSelectedContours :: (PixelRGBA8 -> Bool) -> Image PixelRGBA8 -> [[ContourPoint]]
+traceSelectedContours selected = concatMap traceContours . Map.elems . collectBoundariesBy select
+  where
+    select pixel = if selected pixel then Just () else Nothing
+
+collectBoundariesBy :: Ord style => (PixelRGBA8 -> Maybe style) -> Image PixelRGBA8 -> Map style (Set Edge)
+collectBoundariesBy select image = rows 0 Map.empty
   where
     width = imageWidth image
     height = imageHeight image
@@ -86,19 +160,19 @@ collectBoundaries image = rows 0 Map.empty
     columns x y boundaries
       | x == width = boundaries
       | otherwise = columns (x + 1) y (addPixelEdges x y boundaries)
-    addPixelEdges x y boundaries = case pixelStyle (pixelAt image x y) of
+    addPixelEdges x y boundaries = case select (pixelAt image x y) of
       Nothing -> boundaries
       Just style -> foldl' (insertEdge style) boundaries (boundaryEdges style x y)
     boundaryEdges style x y =
-      [ Edge (GridPoint x y) (GridPoint (x + 1) y) | styleAt x (y - 1) /= Just style ]
-        <> [Edge (GridPoint (x + 1) y) (GridPoint (x + 1) (y + 1)) | styleAt (x + 1) y /= Just style]
-        <> [Edge (GridPoint (x + 1) (y + 1)) (GridPoint x (y + 1)) | styleAt x (y + 1) /= Just style]
-        <> [Edge (GridPoint x (y + 1)) (GridPoint x y) | styleAt (x - 1) y /= Just style]
+      [ Edge (ContourPoint x y) (ContourPoint (x + 1) y) | styleAt x (y - 1) /= Just style ]
+        <> [Edge (ContourPoint (x + 1) y) (ContourPoint (x + 1) (y + 1)) | styleAt (x + 1) y /= Just style]
+        <> [Edge (ContourPoint (x + 1) (y + 1)) (ContourPoint x (y + 1)) | styleAt x (y + 1) /= Just style]
+        <> [Edge (ContourPoint x (y + 1)) (ContourPoint x y) | styleAt (x - 1) y /= Just style]
     styleAt x y
       | x < 0 || y < 0 || x >= width || y >= height = Nothing
-      | otherwise = pixelStyle (pixelAt image x y)
+      | otherwise = select (pixelAt image x y)
 
-insertEdge :: Style -> Map Style (Set Edge) -> Edge -> Map Style (Set Edge)
+insertEdge :: Ord style => style -> Map style (Set Edge) -> Edge -> Map style (Set Edge)
 insertEdge style boundaries edge = Map.insertWith Set.union style (Set.singleton edge) boundaries
 
 pixelStyle :: PixelRGBA8 -> Maybe Style
@@ -158,7 +232,7 @@ removeTransition start end = Map.update remove start
        in if Set.null remaining then Nothing else Just remaining
 
 direction :: GridPoint -> GridPoint -> Int
-direction (GridPoint x1 y1) (GridPoint x2 y2)
+direction (ContourPoint x1 y1) (ContourPoint x2 y2)
   | x2 > x1 = 0
   | y2 > y1 = 1
   | x2 < x1 = 2
@@ -204,16 +278,16 @@ removeCollinear points =
   ]
 
 collinear :: GridPoint -> GridPoint -> GridPoint -> Bool
-collinear (GridPoint ax ay) (GridPoint bx by) (GridPoint cx cy) =
+collinear (ContourPoint ax ay) (ContourPoint bx by) (ContourPoint cx cy) =
   (bx - ax) * (cy - by) == (by - ay) * (cx - bx)
 
 distanceSquared :: GridPoint -> GridPoint -> Double
-distanceSquared (GridPoint ax ay) (GridPoint bx by) =
+distanceSquared (ContourPoint ax ay) (ContourPoint bx by) =
   fromIntegral ((bx - ax) ^ (2 :: Int) + (by - ay) ^ (2 :: Int))
 
 lineDistanceSquared :: GridPoint -> GridPoint -> GridPoint -> Double
-lineDistanceSquared (GridPoint ax ay) (GridPoint bx by) (GridPoint px py)
-  | lengthSquared == 0 = distanceSquared (GridPoint ax ay) (GridPoint px py)
+lineDistanceSquared (ContourPoint ax ay) (ContourPoint bx by) (ContourPoint px py)
+  | lengthSquared == 0 = distanceSquared (ContourPoint ax ay) (ContourPoint px py)
   | otherwise = cross * cross / lengthSquared
   where
     dx = fromIntegral (bx - ax)
@@ -228,7 +302,7 @@ pathText width height = Text.intercalate " " . map contourText
   where
     contourText [] = ""
     contourText (point : rest) = "M" <> pointText point <> foldMap (("L" <>) . pointText) rest <> "Z"
-    pointText (GridPoint x y) = decimal (fromIntegral x / fromIntegral width) <> "," <> decimal (fromIntegral y / fromIntegral height)
+    pointText (ContourPoint x y) = decimal (fromIntegral x / fromIntegral width) <> "," <> decimal (fromIntegral y / fromIntegral height)
 
 decimal :: Double -> Text
 decimal value = trimDecimal (Text.pack (showFFloat (Just 6) value ""))
