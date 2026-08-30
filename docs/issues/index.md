@@ -6,4 +6,4 @@
 - [Issue 0004: Preserve low-alpha soft masks](/issues/0004-preserve-low-alpha-soft-masks.md) - Done. Retain faint source content and redeploy the consumer.
 - [Issue 0005: Support expanded Freeform graphics](/issues/0005-support-expanded-freeform-graphics.md) - Done. Preserve observed path state and affine artwork, then validate the motivating consumer.
 - [Issue 0006: Tile oversized visual evaluations](/issues/0006-tile-oversized-visual-evaluations.md) - Done. Bound browser captures while preserving complete 18 and 72 DPI evidence.
-- [Issue 0007: Preserve fixed light viewer](/issues/0007-preserve-fixed-light-viewer.md) - In Progress. Prevent browser theme adaptation from changing generated colors.
+- [Issue 0007: Preserve fixed light viewer](/issues/0007-preserve-fixed-light-viewer.md) - Done. Prevent browser theme adaptation from changing generated colors.
