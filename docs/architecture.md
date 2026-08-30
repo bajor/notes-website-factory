@@ -19,7 +19,7 @@ flowchart LR
   subgraph Factory[Notes Website Factory]
     Workflow[Reusable build workflow]
     Generator[Haskell generator]
-    TopicTools[Poppler crops and Tesseract]
+    TopicTools[Poppler detection and crops, Tesseract]
     Viewer[Shared viewer templates]
     Oracle[Visual evaluator]
   end
@@ -60,7 +60,7 @@ sequenceDiagram
   W->>G: Test factory fixture
   W->>G: Inspect source only
   G->>S: Discover exactly one PDF
-  G->>O: Render and recognize bounded topic crops
+  G->>O: Render detection page and bounded OCR crops
   O-->>G: Best-effort English labels
   G->>F: Read shared templates
   G-->>W: Validated static site
@@ -86,10 +86,14 @@ flowchart TD
   SourceAlpha{Nonzero source alpha}
   Traceable{Traceable alpha sample}
   Fraction{Non-opaque fraction}
-  Raster[Preserve raster resource]
+  RasterCandidate[Raster candidate]
+  Highlighter{Highlighter profile}
+  Raster[Preserve source-alpha raster]
+  OpaqueMarker[Opaque highlighter raster]
   Vector[Trace normalized SVG contours]
   Reject[Typed unsupported-image failure]
   Links[Extract URI annotations]
+  DetectRender[Temporary 36 DPI page render]
   Frame{Thick chromatic frame}
   Crop[Render bounded interior crop]
   OCR[English Tesseract label]
@@ -107,7 +111,7 @@ flowchart TD
   Browser[Inline SVG, DOM overlays, Topics, and Fit]
 
   Input --> Parse --> Mask
-  Parse --> Frame
+  Input --> DetectRender --> Frame
   Frame -->|yes| Crop --> OCR --> Topic
   Parse --> Links --> Target
   Mask -->|absent| Raster
@@ -115,7 +119,7 @@ flowchart TD
   Mask --> SourceAlpha
   SourceAlpha -->|all zero| Reject
   SourceAlpha -->|nonzero| Traceable
-  Traceable -->|none| Raster
+  Traceable -->|none| LowAlphaCandidate
   Traceable -->|present| Fraction
   Fraction -->|at most 0.01| Raster
   Fraction -->|between 0.01 and 0.02| Reject
@@ -123,7 +127,9 @@ flowchart TD
   Target -->|supported video| YouTube
   Target -->|exact game route| Game
   Target -->|other HTTP or HTTPS| External
-  Raster --> Interpret
+  LowAlphaCandidate --> Highlighter
+  Highlighter -->|yes| OpaqueMarker --> Interpret
+  Highlighter -->|no| Raster --> Interpret
   Vector --> Interpret
   Interpret --> Raw
   YouTube --> Raw
@@ -133,7 +139,7 @@ flowchart TD
   Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The production path never renders or ships a full-page PDF image. Low-alpha content that the vector tracer cannot represent uses the existing lossless RGBA raster path. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Topic recognition detects relative frame geometry from decoded source pixels, asks Poppler for only each accepted interior, and removes every crop before promotion. Tesseract labels remain normal-mode interaction metadata and never replace source pixels. Oversized evaluation scales use bounded Chromium viewports that `Factory.Evaluation` stitches before applying the same complete-image comparison. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
+The deployed product never contains a full-page PDF image. During the build, topic recognition detects relative frame geometry from a removable low-resolution composited render, asks Poppler for only each accepted high-resolution interior, and removes all temporary images before promotion. Low-alpha content remains lossless RGBA unless the pure geometry-and-chroma profile positively identifies an elongated highlighter stroke, whose nonzero pixels become opaque. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Tesseract labels remain normal-mode interaction metadata and never replace source pixels. Oversized evaluation scales use bounded Chromium viewports that `Factory.Evaluation` stitches before applying the same complete-image comparison. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
 
 ## Module Boundaries
 
@@ -142,9 +148,9 @@ The production path never renders or ships a full-page PDF image. Low-alpha cont
 | `Factory.Domain` | Coordinates, matrices, color spaces, paint styles, nodes, typed link targets, assets, titles, validation phases, and errors | None |
 | `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission | None |
-| `Factory.Vectorize` | Image classification, quantization, contour tracing, and simplification | None |
-| `Factory.Topic` | Highlighter-frame detection, board-space ordering, crop preparation, and label normalization | None |
-| `Factory.Ocr` | Bounded Poppler crop and local Tesseract process execution | Processes and temporary crop output |
+| `Factory.Vectorize` | Image classification, highlighter opacity profiling, quantization, contour tracing, and simplification | None |
+| `Factory.Topic` | Composited highlighter-frame detection, visual-row ordering, and label normalization | None |
+| `Factory.Ocr` | Poppler detection render, bounded crops, board placement, and local Tesseract execution | Processes and temporary image output |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster materialization | File input and asset output |
 | `Factory.Site` | Scene validation, metadata rendering, and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
@@ -164,17 +170,20 @@ The production path never renders or ships a full-page PDF image. Low-alpha cont
 8. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
 9. A game target requires HTTPS, the exact case-insensitive host `bajor.github.io`, no credentials or explicit port, path `/algo-arcade/`, and a non-empty `#/games/` fragment route. Matching never uses substring checks.
 10. The game badge appears only in normal interactive mode; evaluation mode retains the native link hit area but draws only PDF-derived pixels.
-11. Topic detection uses relative chroma and border geometry before vectorization; it cannot depend on a consumer hue, resource name, board dimension, or expected count.
-12. Topic crop paths remain inside removable staging space, are removed before promotion, and cannot enter the Pages artifact.
+11. Topic detection uses relative chroma and border geometry on a fixed-resolution composited render; it cannot depend on a consumer hue, resource name, board dimension, or expected count.
+12. Topic detection and crop paths remain inside removable staging space, are removed before promotion, and cannot enter the Pages artifact.
 13. Poppler or Tesseract process failure aborts the build; successful empty OCR receives a deterministic non-source fallback label.
+14. A low-alpha raster becomes opaque only when at least 95 percent of visible pixels are chromatic and its aspect ratio is at least `4:1`; the policy cannot depend on consumer identity or resource name.
+15. Evaluation viewports are at most `8192x4096` pixels; larger reference dimensions are captured with deterministic offsets and stitched before full-image comparison.
 
 ## Determinism and Compatibility
 
 - PDF resources, classification, contours, and generated JSON remain deterministically ordered.
 - The dependency solver, GHC, Cabal, and third-party actions are pinned.
 - Poppler and Chrome revisions can change antialiasing, so fixed tolerances replace exact pixel equality.
+- Browser evaluation tiles depend only on output dimensions and fixed `8192`-pixel horizontal and `4096`-pixel vertical boundaries; tile files are removed after stitching.
 - Topic order depends only on board coordinates; OCR output cannot reorder navigation targets.
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns the measured fraction boundaries and game-link trust boundary. [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) owns low-alpha raster preservation. [ADR 0006](/adr/0006-build-time-topic-ocr.md) owns build-time topic recognition. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md) owns observable artifact behavior, [BDR 0005](/bdr/0005-fidelity-preserving-mixed-scene-output.md) owns source-independent mixed rendering and typed-link behavior, [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md) owns additional graphics state and affine image behavior, and [BDR 0006](/bdr/0006-topic-index-navigation.md) owns topic controls and navigation.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture. [ADR 0008](/adr/0008-composited-topic-detection.md) owns topic recognition, and [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), and [BDR 0012](/bdr/0012-searchable-topic-menu.md) own current observable behavior.

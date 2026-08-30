@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="620" viewBox="0 0 1240 620" role="img" aria-labelledby="title description">
+  <title id="title">Composited topic detection and opaque highlighter flow</title>
+  <desc id="description">The PDF feeds a temporary low-resolution composited render for frame detection and bounded high-resolution OCR crops for topic metadata. In parallel, parsed low-alpha rasters pass through a highlighter profile that makes only qualifying strokes opaque before site emission.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#44505f"/>
+    </marker>
+    <style>
+      .box { fill: #ffffff; stroke: #44505f; stroke-width: 2; rx: 14; }
+      .tool { fill: #fff4cc; stroke: #b7791f; stroke-width: 2; rx: 14; }
+      .pure { fill: #e6fffa; stroke: #287f75; stroke-width: 2; rx: 14; }
+      .output { fill: #e8efff; stroke: #3d5da8; stroke-width: 2; rx: 14; }
+      .line { fill: none; stroke: #44505f; stroke-width: 2; marker-end: url(#arrow); }
+      .label { fill: #17202a; font: 600 16px system-ui, sans-serif; text-anchor: middle; }
+      .detail { fill: #44505f; font: 13px system-ui, sans-serif; text-anchor: middle; }
+      .heading { fill: #17202a; font: 700 22px system-ui, sans-serif; }
+      .note { fill: #596575; font: 14px system-ui, sans-serif; }
+    </style>
+  </defs>
+
+  <text x="40" y="42" class="heading">Topic navigation build path</text>
+  <rect x="40" y="76" width="150" height="72" class="box"/>
+  <text x="115" y="107" class="label">One-page PDF</text>
+  <text x="115" y="129" class="detail">consumer owned</text>
+
+  <rect x="240" y="76" width="180" height="72" class="tool"/>
+  <text x="330" y="105" class="label">Poppler render</text>
+  <text x="330" y="127" class="detail">temporary, 36 DPI</text>
+
+  <rect x="470" y="76" width="180" height="72" class="pure"/>
+  <text x="560" y="105" class="label">Frame detector</text>
+  <text x="560" y="127" class="detail">chroma and geometry</text>
+
+  <rect x="700" y="76" width="180" height="72" class="tool"/>
+  <text x="790" y="105" class="label">Bounded crops</text>
+  <text x="790" y="127" class="detail">accepted interiors, 216 DPI</text>
+
+  <rect x="930" y="76" width="130" height="72" class="tool"/>
+  <text x="995" y="105" class="label">Tesseract</text>
+  <text x="995" y="127" class="detail">English PSM 7</text>
+
+  <rect x="1110" y="76" width="100" height="72" class="output"/>
+  <text x="1160" y="105" class="label">Topics</text>
+  <text x="1160" y="127" class="detail">label + bounds</text>
+
+  <path d="M190 112 H240" class="line"/>
+  <path d="M420 112 H470" class="line"/>
+  <path d="M650 112 H700" class="line"/>
+  <path d="M880 112 H930" class="line"/>
+  <path d="M1060 112 H1110" class="line"/>
+  <text x="240" y="176" class="note">Detection sees the same composition as the reader, not isolated XObjects.</text>
+
+  <text x="40" y="252" class="heading">Low-alpha raster path</text>
+  <rect x="40" y="286" width="150" height="72" class="box"/>
+  <text x="115" y="315" class="label">Parsed image</text>
+  <text x="115" y="337" class="detail">decoded RGBA</text>
+
+  <rect x="240" y="286" width="180" height="72" class="pure"/>
+  <text x="330" y="315" class="label">Mask policy</text>
+  <text x="330" y="337" class="detail">low-alpha raster candidate</text>
+
+  <rect x="470" y="274" width="220" height="96" class="pure"/>
+  <text x="580" y="305" class="label">Highlighter profile?</text>
+  <text x="580" y="328" class="detail">95% chromatic</text>
+  <text x="580" y="348" class="detail">aspect ratio at least 4:1</text>
+
+  <rect x="760" y="252" width="190" height="72" class="output"/>
+  <text x="855" y="281" class="label">Opaque stroke</text>
+  <text x="855" y="303" class="detail">nonzero alpha becomes 255</text>
+
+  <rect x="760" y="348" width="190" height="72" class="output"/>
+  <text x="855" y="377" class="label">Source-alpha raster</text>
+  <text x="855" y="399" class="detail">all other content</text>
+
+  <rect x="1020" y="300" width="190" height="72" class="box"/>
+  <text x="1115" y="329" class="label">Static site</text>
+  <text x="1115" y="351" class="detail">no PDF or temporary images</text>
+
+  <path d="M190 322 H240" class="line"/>
+  <path d="M420 322 H470" class="line"/>
+  <path d="M690 310 H760" class="line"/>
+  <path d="M690 338 C720 338 720 384 760 384" class="line"/>
+  <path d="M950 288 C985 288 985 326 1020 326" class="line"/>
+  <path d="M950 384 C985 384 985 346 1020 346" class="line"/>
+  <text x="718" y="294" class="detail">yes</text>
+  <text x="718" y="374" class="detail">no</text>
+
+  <rect x="40" y="476" width="1170" height="94" fill="#f5f7fa" stroke="#c5ccd6" stroke-width="1.5" rx="14"/>
+  <text x="65" y="510" class="heading">Review invariants</text>
+  <text x="65" y="538" class="note">Temporary detection and OCR images stay in removable build space. Highlighter conversion changes opacity only.</text>
+  <text x="65" y="560" class="note">The workflow emits validated topic metadata and static assets; runtime pan, zoom, Topics, and Fit require no PDF tooling.</text>
+</svg>

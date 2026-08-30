@@ -2,7 +2,8 @@
 type: ADR
 title: Build topic navigation with source-pixel detection and local OCR
 description: Detect highlighter frames before vectorization and label their board-space targets with local Tesseract.
-status: Accepted
+status: Superseded
+superseded_by: "0008"
 timestamp: 2026-08-29
 ---
 # Build Topic Navigation with Source-Pixel Detection and Local OCR
@@ -45,7 +46,7 @@ The fitness functions are multi-hue detector unit tests, process and serializati
 
 # References
 
-1. [OCR topic navigation requirements](/prd/0005-ocr-topic-navigation.md)
-2. [Topic navigation behavior](/bdr/0006-topic-index-navigation.md)
+1. [OCR topic navigation requirements](/prd/0006-ocr-topic-navigation.md)
+2. [Topic navigation behavior](/bdr/0009-topic-index-navigation.md)
 3. [Vector-first mixed rendering](/adr/0001-vector-first-mixed-rendering.md)
 4. [Tesseract OCR project](https://github.com/tesseract-ocr/tesseract)

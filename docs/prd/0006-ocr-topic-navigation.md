@@ -2,7 +2,8 @@
 type: PRD
 title: OCR topic navigation
 description: Requirements for indexing highlighter-framed headings and navigating smoothly to their board positions.
-status: Accepted
+status: Superseded
+superseded_by: "0007"
 timestamp: 2026-08-29
 ---
 # OCR Topic Navigation
@@ -59,9 +60,9 @@ The capability is accepted when focused detector and ordering tests pass, local 
 
 ## Decision Log
 
-- [ADR 0006](/adr/0006-build-time-topic-ocr.md) selects source-pixel frame detection and local Tesseract.
-- [BDR 0006](/bdr/0006-topic-index-navigation.md) specifies observable build and browser behavior.
-- [Issue 0005](/issues/0005-add-ocr-topic-navigation.md) tracks implementation and evidence.
+- [ADR 0007](/adr/0007-build-time-topic-ocr.md) selects source-pixel frame detection and local Tesseract.
+- [BDR 0009](/bdr/0009-topic-index-navigation.md) specifies observable build and browser behavior.
+- [Issue 0008](/issues/0008-add-ocr-topic-navigation.md) tracks implementation and evidence.
 
 # References
 

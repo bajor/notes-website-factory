@@ -29,7 +29,7 @@ Every concept has one canonical home and remains reachable from `docs/index.md`.
 - Never allow a removable output, staging, backup, scratch, or report path to overlap a protected root or another independently owned output root.
 - Keep behavior independent of consumer filenames, dimensions, resource names, scene counts, repository names, and complete content URLs.
 - Do not add Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, optical character recognition, or a backend as a project requirement.
-- Keep Poppler and Chromium in development and CI evaluation only.
+- Keep Chromium in development and CI evaluation only. Poppler may additionally create removable build-time topic detection and OCR images under Constitution Amendments 2 and 3.
 
 ## Architecture and Compatibility
 

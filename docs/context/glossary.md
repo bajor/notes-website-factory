@@ -16,7 +16,7 @@ A grayscale PDF image that supplies per-pixel opacity for another image resource
 
 ## Traceable Alpha Sample
 
-A soft-mask sample at or above alpha `96` that the current vector tracer can retain. Nonzero samples below the cutoff are source content and remain raster when a mask contains no traceable sample.
+A soft-mask sample at or above alpha `96` that the current vector tracer can retain. Nonzero samples below the cutoff remain raster when a mask contains no traceable sample; a positively identified highlighter stroke has a separate opacity policy.
 
 ## Vector Artwork
 
@@ -60,7 +60,11 @@ Poppler's development-only rendering of the source PDF, used as an independent v
 
 ## Topic Frame
 
-A closed, thick, chromatic border detected from a Freeform image XObject before vectorization. Its inner rectangle supplies an OCR crop, and its outer board-space rectangle supplies a navigation target.
+A closed, thick, chromatic border detected from a temporary composited page render. Its inner rectangle supplies a bounded OCR crop, and its outer board-space rectangle supplies a navigation target.
+
+## Highlighter Stroke
+
+A translucent, elongated Freeform image whose visible pixels are overwhelmingly chromatic. The factory preserves its RGB and geometry but emits nonzero pixels at full opacity.
 
 ## Topic Index
 
@@ -68,7 +72,7 @@ The normal-mode `Topics` disclosure whose labels come from build-time OCR and wh
 
 ## OCR
 
-Optical character recognition. The factory runs local English Tesseract on bounded topic crops during the build; no OCR engine or source crop enters the generated site.
+Optical character recognition. The factory runs local English Tesseract on bounded topic crops during the build; no OCR engine, detection render, or source crop enters the generated site.
 
 ## Factory Repository
 

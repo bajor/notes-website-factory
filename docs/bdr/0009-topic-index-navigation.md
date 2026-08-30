@@ -2,14 +2,15 @@
 type: BDR
 title: Topic index navigation
 description: Observable highlighter-frame recognition, topic indexing, controls, and smooth navigation behavior.
-status: Accepted
+status: Superseded
+superseded_by: "0010"
 timestamp: 2026-08-29
 ---
 # Topic Index Navigation
 
 ## Context
 
-[PRD 0005](/prd/0005-ocr-topic-navigation.md) requires a reader to scan and open highlighter-framed topics without treating OCR text as source content. [ADR 0006](/adr/0006-build-time-topic-ocr.md) assigns detection and recognition to the build and navigation to the shared runtime.
+[PRD 0006](/prd/0006-ocr-topic-navigation.md) requires a reader to scan and open highlighter-framed topics without treating OCR text as source content. [ADR 0007](/adr/0007-build-time-topic-ocr.md) assigns detection and recognition to the build and navigation to the shared runtime.
 
 ## Behavior Flow
 
@@ -75,6 +76,6 @@ The build derives optional navigation metadata from source-pixel highlighter fra
 
 # References
 
-1. [OCR topic navigation requirements](/prd/0005-ocr-topic-navigation.md)
-2. [Build-time topic OCR decision](/adr/0006-build-time-topic-ocr.md)
-3. [Implementation issue](/issues/0005-add-ocr-topic-navigation.md)
+1. [OCR topic navigation requirements](/prd/0006-ocr-topic-navigation.md)
+2. [Build-time topic OCR decision](/adr/0007-build-time-topic-ocr.md)
+3. [Implementation issue](/issues/0008-add-ocr-topic-navigation.md)

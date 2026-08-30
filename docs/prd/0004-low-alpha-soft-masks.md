@@ -2,7 +2,8 @@
 type: PRD
 title: Low-alpha soft-mask fidelity
 description: Requirements for preserving faint PDF image content that the vector tracer cannot represent.
-status: Accepted
+status: Superseded
+superseded_by: "0008"
 timestamp: 2026-08-24
 ---
 # Low-Alpha Soft-Mask Fidelity
