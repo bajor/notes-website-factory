@@ -36,12 +36,18 @@ test-runtime:
 	test ! -L "$(RUNTIME_TEST)"
 	scratch="$$(realpath -m "$(RUNTIME_TEST)")" && for candidate in "$(SOURCE)" "$(TEMPLATES)" "$(DIST)" "$(REPORT)"; do protected="$$(realpath -m "$$candidate")" || exit 1; case "$$scratch/" in "$$protected/"*) printf 'runtime scratch overlaps protected path: %s\n' "$$candidate"; exit 1;; esac; case "$$protected/" in "$$scratch/"*) printf 'runtime scratch overlaps protected path: %s\n' "$$candidate"; exit 1;; esac; done
 	mkdir -p "$(RUNTIME_TEST)"
-	rm -f "$(RUNTIME_TEST)/index.html" "$(RUNTIME_TEST)/runtime.js" "$(RUNTIME_TEST)/styles.css" "$(RUNTIME_TEST)/scene.generated.js"
+	rm -f "$(RUNTIME_TEST)/index.html" "$(RUNTIME_TEST)/runtime.js" "$(RUNTIME_TEST)/styles.css" "$(RUNTIME_TEST)/scene.generated.js" "$(RUNTIME_TEST)/light.png" "$(RUNTIME_TEST)/auto-dark.png"
 	cp "$(TEMPLATES)/index.html" "$(TEMPLATES)/runtime.js" "$(TEMPLATES)/styles.css" generator/test/fixtures/runtime/scene.generated.js "$(RUNTIME_TEST)"
 	! grep -Fq 'will-change: transform' "$(RUNTIME_TEST)/styles.css"
+	grep -Fq '<meta name="color-scheme" content="only light" />' "$(RUNTIME_TEST)/index.html"
+	grep -Fq 'color-scheme: only light;' "$(RUNTIME_TEST)/styles.css"
 	normal_dom="$$("$(CHROMIUM)" $(BROWSER_FLAGS) --dump-dom "$(RUNTIME_TEST_URL)")" && printf '%s' "$$normal_dom" | grep -Fq 'class="scene-link scene-game-link"' && printf '%s' "$$normal_dom" | grep -Fq 'aria-label="Play example game in Algo Arcade"' && printf '%s' "$$normal_dom" | grep -Fq 'aria-label="Play %FF in Algo Arcade"' && printf '%s' "$$normal_dom" | grep -Fq 'target="_blank" rel="noopener noreferrer"' && printf '%s' "$$normal_dom" | grep -Fq 'class="scene-game-icon"' && printf '%s' "$$normal_dom" | grep -Fq 'aria-label="Play YouTube video"' && printf '%s' "$$normal_dom" | grep -Fq 'stroke-miterlimit="4"' && printf '%s' "$$normal_dom" | grep -Fq 'stroke-dasharray="6 3"' && printf '%s' "$$normal_dom" | grep -Fq 'stroke-dashoffset="1"' && printf '%s' "$$normal_dom" | grep -Fq 'transform="matrix(0, 20, 30, 0, 50, 90)"' && printf '%s' "$$normal_dom" | grep -Fq 'class="scene-image"' && printf '%s' "$$normal_dom" | grep -Fq 'transform="matrix(40, 10, 5, -20, 10, 45)"'
 	evaluation_dom="$$("$(CHROMIUM)" $(BROWSER_FLAGS) --dump-dom "$(RUNTIME_TEST_URL)?evaluation=18")" && printf '%s' "$$evaluation_dom" | grep -Fq 'aria-label="Play example game in Algo Arcade"' && ! printf '%s' "$$evaluation_dom" | grep -Fq 'scene-game-icon'
 	offset_dom="$$("$(CHROMIUM)" $(BROWSER_FLAGS) --dump-dom "$(RUNTIME_TEST_URL)?evaluation=18&evaluation-x=20&evaluation-y=30")" && printf '%s' "$$offset_dom" | grep -Fq 'transform: translate(-20px, -30px) scale(0.25);'
+
+	"$(CHROMIUM)" $(BROWSER_FLAGS) --window-size=800,600 --screenshot="$(RUNTIME_TEST)/light.png" "$(RUNTIME_TEST_URL)"
+	"$(CHROMIUM)" $(BROWSER_FLAGS) --force-dark-mode --enable-features=WebContentsForceDark --window-size=800,600 --screenshot="$(RUNTIME_TEST)/auto-dark.png" "$(RUNTIME_TEST_URL)"
+	cmp "$(RUNTIME_TEST)/light.png" "$(RUNTIME_TEST)/auto-dark.png"
 
 validate-dist:
 	test -f "$(DIST)/index.html"
