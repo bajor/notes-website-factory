@@ -7,7 +7,7 @@ The generated site renders scene data, inline SVG artwork, links, and extracted 
 ## What You Can Use It For
 
 - Publish a one-page Freeform board as a website without maintaining a backend.
-- Share visual study notes, diagrams, or mixed screenshot-and-handwriting boards with zoom and pan controls.
+- Share visual study notes, diagrams, or mixed screenshot-and-handwriting boards with topic navigation, fit, zoom, and pan interactions.
 - Rebuild and visually validate the site whenever the source PDF changes.
 - Keep source content and deployment policy in a separate repository while reusing one build pipeline.
 
@@ -20,7 +20,7 @@ This is not a general-purpose PDF converter, document editor, or optical charact
 - Produces static files that can be hosted under any GitHub Pages project path.
 - Validates the generated page against Poppler reference renders before publishing it.
 - Preserves screenshots as raster images and traces supported Freeform artwork into scalable SVG.
-- Supports mouse, touch, keyboard, fit-to-screen, zoom, pan, and fullscreen interactions.
+- Supports mouse, touch, keyboard, fit-to-screen, zoom, pan, and build-time topic navigation.
 - Keeps deployment credentials and policy out of the reusable build workflow.
 - Fails the build instead of publishing a Pages artifact when parsing, validation, or visual evaluation fails.
 
@@ -30,6 +30,7 @@ This is not a general-purpose PDF converter, document editor, or optical charact
 - Does not recover editable Freeform objects or semantic handwriting. SVG tracing is deterministic but lossy.
 - Does not support PDF text, page rotation, general image transforms, or several valid PDF structures.
 - Documents outside the supported profile are not guaranteed to build or render correctly.
+- Topic labels use best-effort English handwriting OCR and can contain recognition mistakes.
 - The hosted setup targets GitHub Actions and GitHub Pages. Other deployment systems require a separate integration.
 - Referencing the workflow at `@main` picks up future factory changes; pin a full commit SHA when immutable behavior is required.
 
@@ -105,13 +106,13 @@ On success, the reusable workflow uploads:
 
 The reusable workflow does not deploy either artifact. If evaluation fails, it withholds `github-pages` and uploads available evaluation evidence when possible.
 
-The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when the board contains raster assets. YouTube links activate privacy-enhanced embeds; supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
+The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when the board contains raster assets. Detected highlighter-framed headings appear under `Topics`; the viewer keeps direct wheel, pinch, drag, and keyboard navigation while its visible controls are `Topics` and `Fit`. YouTube links activate privacy-enhanced embeds; supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
 
 The parser intentionally supports only the observed Apple Freeform subset: unrotated zero-origin pages; JPEG and 8-bit Flate images; affine image transforms; clipping and native paths; common device and named one/three-component ICC-based colors; stroke miter and dash state under non-singular similarity transforms; Freeform opacity resources; and HTTP or HTTPS URI annotations. Unsupported structures, including PDF text, fail explicitly.
 
 ## Local Use
 
-The CI-supported toolchain uses GHC 9.6.6, Cabal 3.10.3.0, `zlib1g-dev`, Poppler, and a Chromium-compatible browser. Python 3 is needed only for the local server.
+The CI-supported toolchain uses GHC 9.6.6, Cabal 3.10.3.0, `zlib1g-dev`, Poppler, English-language Tesseract, and a Chromium-compatible browser. Poppler and Tesseract build the topic index; Python 3 is needed only for the local server.
 
 Run the synthetic fixture:
 

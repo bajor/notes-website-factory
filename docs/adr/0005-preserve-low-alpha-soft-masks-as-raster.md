@@ -2,7 +2,8 @@
 type: ADR
 title: Preserve low-alpha soft masks as raster
 description: Keep nonzero soft-mask content lossless when no sample is eligible for vector tracing.
-status: Accepted
+status: Superseded
+superseded_by: "0009"
 timestamp: 2026-08-24
 ---
 # Preserve Low-Alpha Soft Masks as Raster

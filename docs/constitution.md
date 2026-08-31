@@ -45,3 +45,19 @@ flowchart LR
   Factory --> Evidence
   Site --> Pages
 ```
+
+## Amendment 2: Build-Time Topic Recognition
+
+Accepted on 2026-08-29.
+
+The factory may use Poppler and English-language optical character recognition during the build to label navigation targets enclosed by detected Freeform highlighter frames. This amendment supersedes the OCR and evaluation-only Poppler restrictions in Boundaries only for that topic-index flow. OCR labels are interaction metadata, not reconstructed source content: they appear only in normal-mode controls and never replace, hide, or add text over the PDF-derived board.
+
+The deployed product still contains no source PDF, full-page PDF raster, OCR engine, browser PDF parser, backend, or runtime production toolchain. Temporary topic crops remain outside the site artifact. Unsupported PDF content still fails explicitly, while an empty successful OCR result receives a neutral navigation label without changing the rendered board.
+
+## Amendment 3: Composited Detection and Opaque Highlighters
+
+Accepted on 2026-08-29.
+
+The topic-index build may create a temporary low-resolution full-page render because a visible Freeform frame can span multiple image XObjects. The render exists only in removable build space, supplies geometry rather than OCR text, and never enters the deployed product. OCR remains restricted to bounded interiors of accepted frames.
+
+The generated board may render a positively identified Freeform highlighter stroke at full opacity. This exception changes opacity only: it cannot add text, geometry, or pixels outside the source stroke. Other low-alpha content retains source alpha under the existing fidelity contract.

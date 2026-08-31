@@ -6,13 +6,15 @@ module Main (main) where
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
 import Data.Aeson (Value (Object, String), toJSON)
 import Factory.Domain
-import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), calculateDifference, captureTiles, stitchTiles)
+import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, stitchTiles)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
+import Factory.Ocr (cropArguments)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Vectorize (ImageDisposition (..), classifyImage, traceImage)
+import Factory.Topic (detectTopicFrames, sortTopicCandidates, topicFromOcr)
+import Factory.Vectorize (ImageDisposition (..), classifyImage, opaqueHighlighter, traceImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -35,6 +37,7 @@ tests =
     , interpreterTests
     , imageTests
     , vectorizationTests
+    , topicTests
     , linkTests
     , validationTests
     , siteTests
@@ -147,7 +150,7 @@ vectorizationTests =
     , testCase "fully transparent soft masks fail explicitly" $
         classifyImage (Just (ByteString.pack [0, 0])) @?= Left (UnsupportedImage "soft mask contains no visible artwork")
     , testCase "nonzero masks below the tracing cutoff remain raster" $
-        classifyImage (Just (ByteString.pack [0, 1, 95])) @?= Right PreserveRaster
+        classifyImage (Just (ByteString.pack [0, 1, 95])) @?= Right PreserveLowAlphaRaster
     , testCase "alpha at the tracing cutoff remains traceable" $
         classifyImage (Just (ByteString.pack [96])) @?= Right TraceAsVector
     , testCase "rounded screenshots with nearly opaque masks remain raster" $
@@ -169,6 +172,46 @@ vectorizationTests =
         case traceImage vectorImageWithHole of
           Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "nonzero highlighter pixels become opaque without changing RGB" $
+        case opaqueHighlighter translucentHighlighter of
+          Just image -> pixelAt image 0 0 @?= PixelRGBA8 255 192 0 255
+          Nothing -> assertFailure "highlighter stroke was not recognized"
+    , testCase "transparent highlighter pixels retain their source RGB and alpha" $
+        case opaqueHighlighter highlighterWithTransparentPixels of
+          Just image -> pixelAt image 0 0 @?= PixelRGBA8 12 34 56 0
+          Nothing -> assertFailure "highlighter stroke was not recognized"
+    , testCase "a compact translucent color block keeps its source opacity" $
+        case opaqueHighlighter translucentColorBlock of
+          Nothing -> pure ()
+          Just _ -> assertFailure "compact color block was classified as a highlighter stroke"
+    ]
+
+topicTests :: TestTree
+topicTests =
+  testGroup
+    "topic navigation"
+    [ testCase "a thick chromatic frame becomes one topic target" $
+        length (detectTopicFrames syntheticTopicFrame) @?= 1
+    , testCase "topic frame detection is independent of hue" $
+        length (detectTopicFrames syntheticAlternateHueFrame) @?= 1
+    , testCase "an open chromatic frame is not a topic target" $
+        length (detectTopicFrames syntheticOpenFrame) @?= 0
+    , testCase "a thin chromatic frame is not a topic target" $
+        length (detectTopicFrames syntheticThinFrame) @?= 0
+    , testCase "an achromatic frame is not a topic target" $
+        length (detectTopicFrames syntheticAchromaticFrame) @?= 0
+    , testCase "a filled chromatic block is not a topic target" $
+        length (detectTopicFrames syntheticFilledBlock) @?= 0
+    , testCase "overlapping topic rows sort from left to right" $
+        sortTopicCandidates [topicCandidateAt 100 102 40 20, topicCandidateAt 50 200 40 20, topicCandidateAt 10 100 40 30]
+          @?= [topicCandidateAt 10 100 40 30, topicCandidateAt 100 102 40 20, topicCandidateAt 50 200 40 20]
+    , testCase "empty OCR receives a deterministic fallback label" $
+        case topicFromOcr 3 (topicCandidateAt 1 2 3 4) " \n " of
+          Right topic -> topicLabelText (topicLabel topic) @?= "Topic 3"
+          Left buildError -> assertFailure ("unexpected topic error: " <> show buildError)
+    , testCase "fractional crop edges include every touched pixel" $
+        cropArguments "source.pdf" "crop" (Rect (Coordinate 0.2) (Coordinate 0.2) (Coordinate 0.2) (Coordinate 0.2))
+          @?= ["-f", "1", "-l", "1", "-singlefile", "-png", "-r", "216", "-x", "0", "-y", "0", "-W", "2", "-H", "2", "source.pdf", "crop"]
     ]
 
 linkTests :: TestTree
@@ -234,8 +277,14 @@ validationTests =
         validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 2e306 0 0 2e306 0 0) 1 []])
           @?= Left (InvalidScene "a full-board raster image is not allowed")
     , testCase "mixed-scale image axes retain full-board detection" $
-        validateScene (Scene (Coordinate 1e306) (Coordinate 1e-100) [testAsset] [ImageNode (assetId testAsset) (Matrix 1e306 0 0 1e-100 0 0) 1 []])
+        validateScene (Scene (Coordinate 1e306) (Coordinate 1e-100) [testAsset] [ImageNode (assetId testAsset) (Matrix 1e306 0 0 1e-100 0 0) 1 []] [])
           @?= Left (InvalidScene "a full-board raster image is not allowed")
+    , testCase "topic bounds must remain inside the board" $
+        case mkTopicLabel "Topic" of
+          Left buildError -> assertFailure ("unexpected topic label error: " <> show buildError)
+          Right label ->
+            validateScene (Scene 100 100 [] [] [Topic label (Rect 90 90 20 20)])
+              @?= Left (InvalidScene "topic bounds must be positive and inside the board")
     ]
 
 evaluationTests :: TestTree
@@ -266,6 +315,10 @@ evaluationTests =
         case stitchTiles 1 4097 [(CaptureTile 0 0 1 4096, redColumn), (CaptureTile 0 4096 1 1, blueTile)] of
           Left message -> assertFailure (Text.unpack message)
           Right image -> (pixelAt image 0 4095, pixelAt image 0 4096) @?= (PixelRGB8 255 0 0, PixelRGB8 0 0 255)
+    , testCase "readiness comes from the body attribute" $
+        bodyIsReady "<title>data-ready=\"true\"</title><body data-failed=\"true\">" @?= False
+    , testCase "a ready body passes the browser gate" $
+        bodyIsReady "<body data-ready=\"true\"></body>" @?= True
     ]
   where
     redTile = generateImage (\_ _ -> PixelRGB8 255 0 0) 8192 1
@@ -372,7 +425,7 @@ commandAt index commands = case drop index commands of
   [] -> Nothing
 
 sceneWith :: [Asset] -> [SceneNode] -> Scene 'Unvalidated
-sceneWith assets nodes = Scene (Coordinate 100) (Coordinate 100) assets nodes
+sceneWith assets nodes = Scene (Coordinate 100) (Coordinate 100) assets nodes []
 
 testAsset :: Asset
 testAsset = Asset (AssetId "asset-1") "assets/asset-1.png" 10 10
@@ -405,3 +458,53 @@ vectorImageWithHole = generateImage pixel 3 3
   where
     pixel 1 1 = PixelRGBA8 0 0 0 0
     pixel _ _ = PixelRGBA8 0 0 0 255
+
+translucentHighlighter :: Image PixelRGBA8
+translucentHighlighter = generateImage (\_ _ -> PixelRGBA8 255 192 0 89) 12 2
+
+highlighterWithTransparentPixels :: Image PixelRGBA8
+highlighterWithTransparentPixels = generateImage pixel 12 2
+  where
+    pixel 0 _ = PixelRGBA8 12 34 56 0
+    pixel _ _ = PixelRGBA8 255 192 0 89
+
+translucentColorBlock :: Image PixelRGBA8
+translucentColorBlock = generateImage (\_ _ -> PixelRGBA8 255 192 0 89) 4 4
+
+syntheticTopicFrame :: Image PixelRGBA8
+syntheticTopicFrame = syntheticFrame 12 (PixelRGBA8 0 160 255 255)
+
+syntheticAlternateHueFrame :: Image PixelRGBA8
+syntheticAlternateHueFrame = syntheticFrame 12 (PixelRGBA8 240 40 140 255)
+
+syntheticThinFrame :: Image PixelRGBA8
+syntheticThinFrame = syntheticFrame 4 (PixelRGBA8 0 160 255 255)
+
+syntheticAchromaticFrame :: Image PixelRGBA8
+syntheticAchromaticFrame = syntheticFrame 12 (PixelRGBA8 120 120 120 255)
+
+syntheticFrame :: Int -> PixelRGBA8 -> Image PixelRGBA8
+syntheticFrame border color = generateImage pixel 160 120
+  where
+    pixel x y
+      | x >= 20 && x < 140 && y >= 20 && y < 100 && (x < 20 + border || x >= 140 - border || y < 20 + border || y >= 100 - border) = color
+      | otherwise = PixelRGBA8 255 255 255 255
+
+syntheticFilledBlock :: Image PixelRGBA8
+syntheticFilledBlock = generateImage pixel 160 120
+  where
+    pixel x y
+      | x >= 20 && x < 140 && y >= 20 && y < 100 = PixelRGBA8 0 160 255 255
+      | otherwise = PixelRGBA8 255 255 255 255
+
+syntheticOpenFrame :: Image PixelRGBA8
+syntheticOpenFrame = generateImage pixel 160 120
+  where
+    pixel x y
+      | x >= 20 && x < 140 && y >= 20 && y < 100 && (x < 32 || y < 32 || y >= 88) = PixelRGBA8 0 160 255 255
+      | otherwise = PixelRGBA8 255 255 255 255
+
+topicCandidateAt :: Double -> Double -> Double -> Double -> TopicCandidate
+topicCandidateAt x y width height = TopicCandidate bounds bounds
+  where
+    bounds = Rect (Coordinate x) (Coordinate y) (Coordinate width) (Coordinate height)

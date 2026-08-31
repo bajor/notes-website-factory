@@ -2,8 +2,9 @@
 type: BDR
 title: Fidelity-preserving mixed scene output
 description: Observable mask classification, mixed rendering, typed-link, browser, and evaluation behavior.
-status: Accepted
+status: Superseded
 supersedes: "0004"
+superseded_by: "0011"
 timestamp: 2026-08-24
 ---
 # Fidelity-Preserving Mixed Scene Output

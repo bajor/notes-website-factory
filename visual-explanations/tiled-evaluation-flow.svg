@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="430" viewBox="0 0 1160 430" role="img" aria-labelledby="title description">
+  <title id="title">Tiled browser evaluation flow</title>
+  <desc id="description">Poppler creates the full reference image. The evaluator reads only its PNG dimensions, splits large browser viewports into fixed tiles, captures each tile with an evaluation offset, stitches one generated image, and compares the complete images using unchanged thresholds.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#44505f"/>
+    </marker>
+    <style>
+      .box { fill: #fff; stroke: #44505f; stroke-width: 2; rx: 14; }
+      .tool { fill: #fff4cc; stroke: #b7791f; stroke-width: 2; rx: 14; }
+      .pure { fill: #e6fffa; stroke: #287f75; stroke-width: 2; rx: 14; }
+      .output { fill: #e8efff; stroke: #3d5da8; stroke-width: 2; rx: 14; }
+      .line { fill: none; stroke: #44505f; stroke-width: 2; marker-end: url(#arrow); }
+      .label { fill: #17202a; font: 600 15px system-ui, sans-serif; text-anchor: middle; }
+      .detail { fill: #44505f; font: 12px system-ui, sans-serif; text-anchor: middle; }
+      .heading { fill: #17202a; font: 700 22px system-ui, sans-serif; }
+      .note { fill: #596575; font: 14px system-ui, sans-serif; }
+    </style>
+  </defs>
+
+  <text x="40" y="42" class="heading">Large-board visual evaluation</text>
+  <rect x="40" y="82" width="140" height="72" class="box"/>
+  <text x="110" y="111" class="label">Source PDF</text>
+  <text x="110" y="133" class="detail">one page</text>
+
+  <rect x="225" y="82" width="160" height="72" class="tool"/>
+  <text x="305" y="111" class="label">Poppler</text>
+  <text x="305" y="133" class="detail">18 and 72 DPI reference</text>
+
+  <rect x="430" y="82" width="170" height="72" class="pure"/>
+  <text x="515" y="111" class="label">PNG header</text>
+  <text x="515" y="133" class="detail">read width and height only</text>
+
+  <rect x="645" y="70" width="190" height="96" class="pure"/>
+  <text x="740" y="101" class="label">Tile plan</text>
+  <text x="740" y="123" class="detail">maximum 8192 x 4096</text>
+  <text x="740" y="143" class="detail">fixed x/y offsets</text>
+
+  <rect x="880" y="82" width="230" height="72" class="tool"/>
+  <text x="995" y="111" class="label">Chromium captures tiles</text>
+  <text x="995" y="133" class="detail">same scene, evaluation offset</text>
+
+  <path d="M180 118 H225" class="line"/>
+  <path d="M385 118 H430" class="line"/>
+  <path d="M600 118 H645" class="line"/>
+  <path d="M835 118 H880" class="line"/>
+
+  <rect x="225" y="240" width="210" height="82" class="output"/>
+  <text x="330" y="272" class="label">Full reference PNG</text>
+  <text x="330" y="294" class="detail">unchanged Poppler oracle</text>
+
+  <rect x="645" y="240" width="190" height="82" class="pure"/>
+  <text x="740" y="272" class="label">Stitch tiles</text>
+  <text x="740" y="294" class="detail">remove temporary tile files</text>
+
+  <rect x="880" y="240" width="230" height="82" class="output"/>
+  <text x="995" y="272" class="label">Full generated PNG</text>
+  <text x="995" y="294" class="detail">exact reference dimensions</text>
+
+  <rect x="430" y="350" width="405" height="58" class="box"/>
+  <text x="632" y="375" class="label">Whole-image pixel, ink, and tolerance comparison</text>
+  <text x="632" y="396" class="detail">thresholds remain unchanged</text>
+
+  <path d="M305 154 V240" class="line"/>
+  <path d="M995 154 V205 H740 V240" class="line"/>
+  <path d="M835 281 H880" class="line"/>
+  <path d="M330 322 V379 H430" class="line"/>
+  <path d="M995 322 V379 H835" class="line"/>
+  <text x="40" y="200" class="note">Only evaluation is tiled. The deployed site and normal interaction model are unchanged.</text>
+</svg>
