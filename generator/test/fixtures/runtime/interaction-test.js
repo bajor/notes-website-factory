@@ -69,9 +69,12 @@ async function runScenario(site, siteWindow, name) {
   }
   if (name === 'select-navigation') {
     const previousTransform = site.querySelector('#board').style.transform;
+    siteWindow.requestAnimationFrame = (callback) => {
+      callback(siteWindow.performance.now() + 500);
+      return 1;
+    };
     topicsButton.click();
     topicButtons[0].click();
-    await delay(600);
     assert(site.querySelector('#board').style.transform !== previousTransform, 'topic selection did not move the board');
     return;
   }
