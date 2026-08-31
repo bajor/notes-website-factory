@@ -86,7 +86,7 @@ flowchart TD
   SourceAlpha{Nonzero source alpha}
   Traceable{Traceable alpha sample}
   Fraction{Non-opaque fraction}
-  RasterCandidate[Raster candidate]
+  LowAlphaCandidate[Low-alpha raster candidate]
   Highlighter{Highlighter profile}
   Raster[Preserve source-alpha raster]
   OpaqueMarker[Opaque highlighter raster]

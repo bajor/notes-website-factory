@@ -31,9 +31,9 @@ Implement [ADR 0008](/adr/0008-composited-topic-detection.md) and every scenario
 
 ## Completion Evidence
 
-- Factory `make test` and `make evaluate` pass with 71 unit tests plus Chromium coverage for topic-menu interaction, mixed-case search, empty results, selection, direct-interaction cancellation, reduced motion, short viewports, empty topics, evaluation mode, and readiness mode.
+- Factory `make test` and `make evaluate` pass with 78 unit tests plus Chromium coverage for topic-menu interaction, mixed-case search, empty results, selection, direct-interaction cancellation, reduced motion, short viewports, empty topics, evaluation mode, and readiness mode.
 - Consumer revision `1bdf230` produces 12 ordered topics.
-- Consumer evaluation passes at 18 and 72 DPI with mean error `0.0033851280709206255`, pixels-within-tolerance ratio `0.98120343456097`, and ink ratio `1.1380812349022076`.
+- Consumer evaluation passes at 18 and 72 DPI with mean error `0.0028092643247973966`, pixels-within-tolerance ratio `0.9831241454574124`, and ink ratio `1.1380772632157787`.
 - `build/consumer-evaluation/report.html` and both difference images were inspected on 2026-08-30.
 
 # References

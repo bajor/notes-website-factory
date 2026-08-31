@@ -312,8 +312,9 @@ function filterTopics() {
     item.hidden = !item.dataset.searchLabel.includes(query);
     if (!item.hidden) visibleTopics += 1;
   }
-  topicEmpty.hidden = visibleTopics !== 0;
-  if (visibleTopics === 0) topicEmpty.scrollIntoView({ block: 'nearest' });
+  const noResults = visibleTopics === 0;
+  topicEmpty.textContent = noResults ? 'No topics found' : '';
+  if (noResults) topicEmpty.scrollIntoView({ block: 'nearest' });
 }
 
 function setTopicPanelOpen(open) {

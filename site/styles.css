@@ -269,10 +269,14 @@ body,
 }
 
 #topic-empty {
-  margin: 12px 8px;
+  margin: 0 8px;
   color: rgb(255 255 255 / 58%);
   font-size: 13px;
   text-align: center;
+}
+
+#topic-empty:not(:empty) {
+  margin-block: 12px;
 }
 
 @media (max-width: 720px) {

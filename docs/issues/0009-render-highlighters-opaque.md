@@ -22,7 +22,7 @@ Implement [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) and [BDR 0011](/bd
 
 - Unit tests prove an elongated translucent chromatic stroke becomes opaque and a compact chromatic block does not qualify.
 - Consumer `Im38.png` contains `25860` zero-alpha pixels and `108924` alpha-`255` pixels, with no intermediate alpha.
-- Consumer evaluation passes unchanged thresholds with ink ratio `1.1380812349022076`; the 18 and 72 DPI difference images were inspected on 2026-08-29.
+- Consumer evaluation passes unchanged thresholds with ink ratio `1.1380772632157787`; the 18 and 72 DPI difference images were inspected on 2026-08-30.
 
 # References
 

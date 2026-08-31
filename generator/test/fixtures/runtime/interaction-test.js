@@ -52,7 +52,7 @@ async function runScenario(site, siteWindow, name) {
   if (name === 'no-results') {
     topicsButton.click();
     enterSearch('not a topic');
-    assert(!empty.hidden, 'empty search result was not shown');
+    assert(empty.textContent === 'No topics found', 'empty search result was not announced');
     return;
   }
   if (name === 'select-close') {

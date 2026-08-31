@@ -33,7 +33,7 @@
 
   <rect x="645" y="70" width="190" height="96" class="pure"/>
   <text x="740" y="101" class="label">Tile plan</text>
-  <text x="740" y="123" class="detail">maximum 4096 x 4096</text>
+  <text x="740" y="123" class="detail">maximum 8192 x 4096</text>
   <text x="740" y="143" class="detail">fixed x/y offsets</text>
 
   <rect x="880" y="82" width="230" height="72" class="tool"/>
